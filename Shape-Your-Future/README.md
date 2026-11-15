@@ -422,5 +422,5 @@ Focused on **Large Language Models (LLMs)**, neural network fundamentals, and in
 
 ## License
 
-Released under the MIT License. See [`LICENSE`](LICENSE).
+Released under the MIT License.
 
