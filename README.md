@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 <div align="center">
 
 
@@ -422,3 +423,7 @@ Focused on **Large Language Models (LLMs)**, neural network fundamentals, and in
 ## License
 
 Released under the MIT License. See [`LICENSE`](LICENSE).
+=======
+# LLM-Projects
+Collection of LLM projects, covering fine-tuning, vision models, and other experiments.
+>>>>>>> e3fdad61e2c348e68ae5d1ec3702304c0e613d77
