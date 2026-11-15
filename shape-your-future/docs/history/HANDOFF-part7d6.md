@@ -1,7 +1,0 @@
-# HANDOFF part 7d-7: i18n audit for the planning-required page
-- Audit of views/planning-required-page.ts + views/planning-required-item.ts: every key they use already exists in fa + en (nothing was missing). Page: growth.planningRequiredPage (intro, listLabel, listTitle, empty.title/description/nextStep/toGoals/toToday). Card: growth.planningRequiredItem (manualEntry, hideForm, formRegion, missing, listSeparator, needFields, suggestion, suggestionHint). Route: growth.routes.planningRequired (label = page title, description). Retry/loading: ui.async.*. Load error: errors.* via errorMessage.
-- "Submit success": none exists. A saved card leaves the list and focus moves to the list heading / empty guide, so no success string was added.
-- Hardcoded-string grep (both views): no readable literal left; only ids, class names, data-/aria- attribute names and selectors. Outside scope: views/next-action-form.ts (7c) has the date placeholder "YYYY-MM-DD" as a literal; left as is.
-- Parity: full growth en/fa check run as a plain node script on the compiled copy: 406 leaf keys each, 0 missing, 0 extra, 0 string/function or arity mismatches. This is NOT vitest.
-- Test file changed: smoke/planning-required-page-i18n.test.ts now also checks no dead keys in the page and card, route copy, ui.async copy, and a no-hardcoded-text scan (same heuristic verified in node on the current sources).
-- NOT RUN: vitest and the build (no node_modules/network). tsc --noEmit clean except main.ts (missing font/CSS module types).

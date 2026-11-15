@@ -1,4 +1,0 @@
-frontend/src/views/daily-plan.ts
-frontend/src/views/next-action-now.ts
-frontend/smoke/daily-plan-view.test.ts
-frontend/smoke/next-action-now-view.test.ts
