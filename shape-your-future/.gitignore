@@ -1,0 +1,26 @@
+.env
+*.pyc
+__pycache__/
+.pytest_cache/
+node_modules/
+dist/
+*.db
+.env.*
+!.env.example
+.venv/
+venv/
+tsconfig.tsbuildinfo
+*.sqlite
+*.sqlite3
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+
+# local-only files
+docker-compose.override.yml
+verify-report.txt
+.DS_Store
+.idea/
+.vscode/

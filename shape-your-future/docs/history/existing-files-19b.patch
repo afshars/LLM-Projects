@@ -1,0 +1,411 @@
+--- a/frontend/src/views/chat.ts
++++ b/frontend/src/views/chat.ts
+@@ -2,10 +2,12 @@
+ import type { ChatMessage } from "../api/types";
+ import { handleAuthExpiry } from "../lib/auth-guard";
+ import { el, errorMessage, isApiError } from "../lib/dom";
++import { isStageClosed } from "../lib/chat-info";
+ import { restoreConversation, shouldRestoreOnMount } from "../state/conversation-restore";
+ import { LANG_META } from "../lib/locales";
+ import { setButtonLoading } from "../lib/page";
+ import { conversationGoalText, journey } from "../state/journey";
++import { createInfoPanel, createStageLive, createStageMeta, createStageNote, resetChatStatus } from "./chat-status";
+ import type { ViewContext } from "./view-context";
+ 
+ /**
+@@ -43,6 +45,7 @@
+   disposeActive?.();
+   disposeActive = null;
+   chatMounted = false;
++  resetChatStatus();
+ }
+ /** Survives re-renders so a language switch mid-request can't double-submit. */
+ let converting = false;
+@@ -94,10 +97,21 @@
+   sendBtn.innerHTML = SEND_ICON;
+ 
+   const composer = el("div", { class: "chat-composer" }, [input, sendBtn]);
+-  const dock = el("div", { class: "chat-dock" }, [chipsBox, composer]);
++  // Part 19b: stage badge + intent, side panel / collapsible section, ready / closed note, live region.
++  // All of it is rendered from the stored conversation state (see chat-status.ts).
++  const meta = createStageMeta(c);
++  const panel = createInfoPanel(c);
++  const stageLive = createStageLive(c);
++  const stageNote = createStageNote(c, () => {
++    journey.startNewConversation(); // drops id + derived state, keeps the unsent draft
++    input.focus(); // user-initiated (they pressed the button), so moving focus is fine
++  });
++  const dock = el("div", { class: "chat-dock" }, [stageNote.node, chipsBox, composer]);
+   feed.append(anchor); // scroll sentinel: always the last child, everything else is inserted before it
++  // Grid children: feed, panel, dock. Desktop: panel is a side column. Narrow: panel sits between feed and dock.
++  const body = el("div", { class: "chat-body" }, [feed, panel.node, dock]);
+   // The chat renders straight into <main> without page(), so it needs its own h1.
+-  const view = el("div", { class: "chat-view" }, [el("h1", { class: "sr-only" }, [c.heading]), feed, dock]);
++  const view = el("div", { class: "chat-view" }, [el("h1", { class: "sr-only" }, [c.heading]), meta.node, body, stageLive.node]);
+ 
+   container.replaceChildren(view);
+ 
+@@ -158,6 +172,11 @@
+     return conv.awaiting || conv.restoreStatus === "restoring";
+   }
+ 
++  /** The backend reported stage "closed": no more messages in this conversation. */
++  function closed(): boolean {
++    return isStageClosed(journey.get().conversation.stage);
++  }
++
+   /** Restore progress / failure. The error text is built here from the stored ApiError kind, so it
+    * is in the current UI language after a language switch. 404 -> start over; other errors -> retry. */
+   function buildRestoreNode(): HTMLElement | null {
+@@ -264,23 +283,32 @@
+       if (!converting) ctaBtn.disabled = conv.awaiting;
+     }
+ 
++    // Stage badge, intent, side panel, ready / closed note, live announcement (no focus changes)
++    meta.update(conv);
++    panel.update(conv);
++    stageNote.update(conv, goal);
++    stageLive.update(conv);
++
+     // Controls
+-    const blocked = busy();
++    const isClosed = closed();
++    const blocked = busy() || isClosed;
+     sendBtn.disabled = blocked || input.value.trim().length === 0;
+-    sendBtn.setAttribute("aria-busy", String(blocked));
+-    input.setAttribute("aria-busy", String(blocked));
++    sendBtn.setAttribute("aria-busy", String(busy()));
++    input.setAttribute("aria-busy", String(busy()));
++    input.disabled = isClosed;
++    input.placeholder = isClosed ? c.info.closedPlaceholder : c.placeholder;
+     for (const chip of chips) chip.disabled = blocked;
+     // starters only help on a new, empty conversation (not one that was restored without its messages)
+-    chipsBox.hidden = conv.messages.length > 0 || conv.restored;
++    chipsBox.hidden = conv.messages.length > 0 || conv.restored || isClosed;
+ 
+     scrollToEnd(!firstPaint);
+-    if (focusInput) input.focus();
++    if (focusInput && !isClosed) input.focus(); // a disabled textarea can't take focus
+   }
+ 
+   // ---------- Actions ----------
+   async function send(raw: string): Promise<void> {
+     const text = raw.trim().slice(0, MAX_MESSAGE_LENGTH);
+-    if (!text || busy()) return;
++    if (!text || busy() || closed()) return;
+ 
+     const message: ChatMessage = { id: nextId(), role: "user", content: text, timestamp: new Date().toISOString(), status: "pending" };
+     input.value = "";
+@@ -345,7 +373,7 @@
+   input.addEventListener("input", () => {
+     journey.setDraft(input.value); // silent: no re-render while typing
+     autosize();
+-    sendBtn.disabled = busy() || input.value.trim().length === 0;
++    sendBtn.disabled = busy() || closed() || input.value.trim().length === 0;
+   });
+ 
+   input.addEventListener("keydown", (e) => {
+--- a/frontend/src/style.css
++++ b/frontend/src/style.css
+@@ -1415,6 +1415,185 @@
+ }
+ 
+ /* =========================================================================
++   Chat additions (Part 19b): stage badge, intent, side panel, ready/closed note.
++   Tokens only, logical properties only (mirrors under dir="rtl").
++   Layout: .chat-body is a grid with three children: feed, aside, dock.
++   Desktop: feed + dock on the start side, panel as a side column.
++   <= 900px: one column; the panel is a collapsible section between feed and dock.
++   ========================================================================= */
++
++.app-main:has(> .chat-view) { max-inline-size: var(--layout-wide-width); }
++
++.chat-body {
++  flex: 1;
++  min-block-size: 0;
++  min-inline-size: 0;
++  display: grid;
++  grid-template-columns: minmax(0, 1fr) minmax(0, var(--sidebar-width));
++  grid-template-rows: minmax(0, 1fr) auto;
++  column-gap: var(--space-4);
++  row-gap: var(--space-2);
++}
++.chat-body > .chat-feed { grid-column: 1; grid-row: 1; min-inline-size: 0; }
++.chat-body > .chat-dock { grid-column: 1; grid-row: 2; min-inline-size: 0; }
++.chat-body > .chat-info { grid-column: 2; grid-row: 1 / span 2; }
++
++/* ---------------- Stage badge + intent ---------------- */
++
++.chat-meta {
++  flex: none;
++  display: flex;
++  flex-wrap: wrap;
++  align-items: center;
++  gap: var(--space-2) var(--space-3);
++  padding-inline: var(--space-2);
++  font-size: var(--text-xs);
++  color: var(--color-text-muted);
++}
++.chat-meta[hidden] { display: none; }
++
++.chat-badge {
++  display: inline-flex;
++  align-items: center;
++  gap: var(--space-1);
++  max-inline-size: 100%;
++  padding-block: var(--space-1);
++  padding-inline: var(--space-3);
++  border: 1px solid var(--color-border-strong);
++  border-radius: var(--radius-pill);
++  background: rgba(var(--color-accent-rgb), 0.08);
++  color: var(--color-text);
++  font-weight: var(--weight-medium);
++}
++.chat-badge__dot {
++  inline-size: var(--space-2);
++  block-size: var(--space-2);
++  border-radius: 50%;
++  background: var(--color-text-faint);
++  flex: none;
++}
++.chat-badge__label { color: var(--color-text-muted); font-weight: var(--weight-regular); }
++.chat-badge__value { overflow-wrap: anywhere; }
++.chat-badge--discovery .chat-badge__dot { background: var(--color-accent); }
++.chat-badge--ready { border-color: rgba(var(--color-success-rgb), 0.55); background: rgba(var(--color-success-rgb), 0.1); }
++.chat-badge--ready .chat-badge__dot { background: var(--color-success); }
++.chat-badge--closed { border-style: dashed; }
++
++.chat-intent { display: inline-flex; flex-wrap: wrap; gap: var(--space-1); min-inline-size: 0; }
++.chat-intent__value { color: var(--color-text); overflow-wrap: anywhere; }
++
++/* ---------------- Side panel: "What I know so far" ---------------- */
++
++.chat-info {
++  min-inline-size: 0;
++  min-block-size: 0;
++  display: flex;
++  flex-direction: column;
++  gap: var(--space-3);
++  padding: var(--space-4);
++  border: 1px solid var(--color-border);
++  border-radius: var(--radius-lg);
++  background: var(--color-surface);
++  overflow-y: auto;
++  overscroll-behavior: contain;
++}
++.chat-info__title { margin: 0; font-size: var(--text-md); font-weight: var(--weight-medium); }
++.chat-info__toggle { display: none; } /* narrow screens only */
++.chat-info__section { display: flex; flex-direction: column; gap: var(--space-2); margin-block-end: var(--space-4); }
++.chat-info__section:last-child { margin-block-end: 0; }
++.chat-info__heading {
++  margin: 0;
++  font-size: var(--text-sm);
++  font-weight: var(--weight-medium);
++  color: var(--color-text-muted);
++}
++.chat-info__topic { display: flex; flex-direction: column; gap: var(--space-1); }
++.chat-info__topic-title { margin: 0; font-size: var(--text-sm); font-weight: var(--weight-medium); color: var(--color-accent); }
++.chat-info__fields { margin: 0; display: flex; flex-direction: column; gap: var(--space-2); }
++.chat-info__field { display: flex; flex-direction: column; gap: 2px; min-inline-size: 0; }
++.chat-info__field-label { font-size: var(--text-xs); color: var(--color-text-muted); }
++.chat-info__field-value { margin: 0; font-size: var(--text-sm); color: var(--color-text); overflow-wrap: anywhere; }
++.chat-info__missing { margin: 0; padding-inline-start: var(--space-5); font-size: var(--text-sm); color: var(--color-text); }
++.chat-info__missing li { overflow-wrap: anywhere; }
++.chat-info__empty { margin: 0; font-size: var(--text-sm); color: var(--color-text-muted); }
++
++/* ---------------- Ready hint / closed notice (above the composer) ---------------- */
++
++.chat-stage-note {
++  display: flex;
++  flex-direction: column;
++  align-items: flex-start;
++  gap: var(--space-2);
++  padding-block: var(--space-2);
++  padding-inline: var(--space-3);
++  border: 1px solid var(--color-border);
++  border-radius: var(--radius-md);
++  color: var(--color-text-muted);
++  font-size: var(--text-sm);
++}
++.chat-stage-note[hidden] { display: none; }
++.chat-stage-note--ready { border-color: rgba(var(--color-success-rgb), 0.45); background: rgba(var(--color-success-rgb), 0.08); color: var(--color-text); }
++.chat-stage-note__text { margin: 0; overflow-wrap: anywhere; }
++
++.chat-composer__input:disabled { cursor: not-allowed; opacity: 0.7; }
++
++@media (max-width: 900px) {
++  .chat-body {
++    grid-template-columns: minmax(0, 1fr);
++    grid-template-rows: minmax(0, 1fr) auto auto;
++  }
++  .chat-body > .chat-feed { grid-column: 1; grid-row: 1; }
++  .chat-body > .chat-info { grid-column: 1; grid-row: 2; padding: 0; gap: 0; overflow: visible; }
++  .chat-body > .chat-dock { grid-column: 1; grid-row: 3; }
++
++  .chat-info__title { display: none; }
++  .chat-info__toggle {
++    display: flex;
++    align-items: center;
++    justify-content: space-between;
++    gap: var(--space-2);
++    inline-size: 100%;
++    min-block-size: var(--size-touch);
++    padding-block: var(--space-2);
++    padding-inline: var(--space-4);
++    border: 0;
++    border-radius: var(--radius-lg);
++    background: transparent;
++    color: var(--color-text);
++    font: inherit;
++    font-size: var(--text-sm);
++    font-weight: var(--weight-medium);
++    text-align: start;
++    cursor: pointer;
++  }
++  .chat-info__toggle:focus-visible { outline: 2px solid var(--color-focus-ring); outline-offset: 2px; }
++  .chat-info__chevron {
++    inline-size: var(--space-2);
++    block-size: var(--space-2);
++    border-inline-end: 2px solid currentColor;
++    border-block-end: 2px solid currentColor;
++    transform: rotate(45deg);
++    transition: transform var(--transition-fast);
++    flex: none;
++  }
++  .chat-info--open .chat-info__chevron { transform: rotate(-135deg); }
++
++  .chat-info__body { display: none; }
++  .chat-info--open .chat-info__body {
++    display: block;
++    max-block-size: 40dvh;
++    overflow-y: auto;
++    overscroll-behavior: contain;
++    padding-block: 0 var(--space-4);
++    padding-inline: var(--space-4);
++  }
++}
++
++@media (prefers-reduced-motion: reduce) {
++  .chat-info__chevron { transition: none; }
++}
++
++/* =========================================================================
+    Goal Workspace (views/goal-workspace.ts)
+    Logical properties only, so the tree mirrors between dir="rtl" and "ltr".
+    ========================================================================= */
+--- a/frontend/src/growth-os/i18n/en.ts
++++ b/frontend/src/growth-os/i18n/en.ts
+@@ -124,6 +124,55 @@
+     restoredNote: "Reconnected to your conversation. Your progress is kept, but earlier messages can't be shown here.",
+     restoreRetry: "Try again",
+     restoreStartNew: "Start a new conversation",
++    // Part 19b: side panel, stage badge, intent label, ready / closed states.
++    info: {
++      panelTitle: "What I know so far",
++      panelEmpty: "Nothing here yet. This panel fills in as you chat.",
++      missingTitle: "Still missing",
++      missingNone: "Nothing else is missing.",
++      stageLabel: "Stage",
++      intentLabel: "Intent",
++      stages: {
++        discovery: "Getting to know you",
++        ready: "Ready",
++        closed: "Closed",
++      } as Record<string, string>,
++      stageAnnounce: (stage: string) => `Conversation stage: ${stage}`,
++      intents: {
++        learn_programming: "Learning programming",
++        career_growth: "Career growth",
++        reduce_procrastination: "Reducing procrastination",
++      } as Record<string, string>,
++      topics: {
++        goal_discovery: "Goal",
++        time_availability: "Time available",
++        energy_discovery: "Energy",
++        planning_preference: "Planning style",
++        motivation: "Motivation",
++        procrastination: "Procrastination",
++        distraction_discovery: "Distractions",
++        lifestyle: "Lifestyle",
++      } as Record<string, string>,
++      fields: {
++        goal_text: "What you want to achieve",
++        goal_reason: "Why it matters",
++        available_hours_per_day: "Free hours per day",
++        preferred_time_of_day: "Preferred time of day",
++        energy_level: "Energy level",
++        high_energy_time: "Peak energy time",
++        planning_style: "How you like to plan",
++        motivation_style: "What keeps you going",
++        procrastination_pattern: "When you put things off",
++        main_distraction: "Main distraction",
++        distraction_trigger: "What triggers it",
++        lifestyle_summary: "Daily life",
++      } as Record<string, string>,
++      readyHintGoal: (button: string) => `Next step: press “${button}” above to turn your goal into a roadmap.`,
++      readyHintNoGoal: "I have enough to work with. Tell me your goal in one sentence and I'll offer to build your roadmap.",
++      closedNotice: "This conversation is closed, so you can't send more messages here.",
++      closedPlaceholder: "This conversation is closed",
++      startNew: "Start a new conversation",
++    },
+   },
+   workspace: {
+     title: "Goal workspace",
+--- a/frontend/src/growth-os/i18n/fa.ts
++++ b/frontend/src/growth-os/i18n/fa.ts
+@@ -120,6 +120,55 @@
+     restoredNote: "دوباره به گفتگویت وصل شدیم. پیشرفتت حفظ شده، اما پیام‌های قبلی اینجا نمایش داده نمی‌شوند.",
+     restoreRetry: "تلاش دوباره",
+     restoreStartNew: "شروع گفتگوی تازه",
++    // Part 19b: side panel, stage badge, intent label, ready / closed states.
++    info: {
++      panelTitle: "تا اینجا چه می‌دانم",
++      panelEmpty: "هنوز چیزی اینجا نیست. با پیش رفتن گفتگو این بخش پر می‌شود.",
++      missingTitle: "هنوز نمی‌دانم",
++      missingNone: "چیز دیگری باقی نمانده است.",
++      stageLabel: "مرحله",
++      intentLabel: "نیت",
++      stages: {
++        discovery: "در حال شناخت",
++        ready: "آماده",
++        closed: "بسته‌شده",
++      } as Record<string, string>,
++      stageAnnounce: (stage: string) => `مرحله‌ی گفتگو: ${stage}`,
++      intents: {
++        learn_programming: "یادگیری برنامه‌نویسی",
++        career_growth: "پیشرفت شغلی",
++        reduce_procrastination: "کم‌کردن اهمال‌کاری",
++      } as Record<string, string>,
++      topics: {
++        goal_discovery: "هدف",
++        time_availability: "زمان در دسترس",
++        energy_discovery: "انرژی",
++        planning_preference: "سبک برنامه‌ریزی",
++        motivation: "انگیزه",
++        procrastination: "اهمال‌کاری",
++        distraction_discovery: "عوامل حواس‌پرتی",
++        lifestyle: "سبک زندگی",
++      } as Record<string, string>,
++      fields: {
++        goal_text: "چیزی که می‌خواهی به آن برسی",
++        goal_reason: "چرا برایت مهم است",
++        available_hours_per_day: "ساعت آزاد در روز",
++        preferred_time_of_day: "ساعت ترجیحی در روز",
++        energy_level: "سطح انرژی",
++        high_energy_time: "زمان اوج انرژی",
++        planning_style: "چطور برنامه‌ریزی می‌کنی",
++        motivation_style: "چه چیزی تو را پیش می‌برد",
++        procrastination_pattern: "کِی کارها را عقب می‌اندازی",
++        main_distraction: "مهم‌ترین حواس‌پرتی",
++        distraction_trigger: "چه چیزی آن را فعال می‌کند",
++        lifestyle_summary: "زندگی روزمره",
++      } as Record<string, string>,
++      readyHintGoal: (button: string) => `گام بعدی: دکمه‌ی «${button}» را بالا بزن تا هدفت به نقشه راه تبدیل شود.`,
++      readyHintNoGoal: "اطلاعات کافی دارم. هدفت را در یک جمله بگو تا پیشنهاد ساخت نقشه راه را بدهم.",
++      closedNotice: "این گفتگو بسته شده است و دیگر نمی‌توانی اینجا پیام بفرستی.",
++      closedPlaceholder: "این گفتگو بسته شده است",
++      startNew: "شروع گفتگوی تازه",
++    },
+   },
+   workspace: {
+     title: "میز کار هدف",

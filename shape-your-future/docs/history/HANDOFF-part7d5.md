@@ -1,0 +1,11 @@
+# HANDOFF part 7d-5/6: planning-required page + route
+- Page `views/planning-required-page.ts` (`renderPlanningRequiredPage`), route `plan/planning-required` (labelKey `planningRequired`, after next-actions), mapped in `section-view.ts`. The legacy step `PLANNING_REQUIRED` / `views/planning-required.ts` is untouched.
+- Load on mount: `planningRequiredStore.load(loader)`; loader = rows from `journey.decomposition` (no list route exists; no decomposition = empty). Different decomposition than last visit => forced reload. Retry = `load(loader, true)`.
+- States via `asyncPanel`: skeleton (list), error + retry, `emptyStateGuide` on empty, else `<ul>` of `planningRequiredItem`. Cards only wire callbacks to the store; validation stays 7c's (`validateNextAction` via the store); endpoint is always the item's own `planning_endpoint`.
+- Empty state links to Goals and Today via `findSection(id).entry` + `journey.goTo/goToRoute` (no paths). `emptyStateGuide` got an optional, backward-compatible `secondaryAction` (+2 CSS rules in components.css).
+- One form open at a time (module-level `openId`, kept across language switches); typing does not rebuild cards (keeps caret); after a save focus goes to the list heading / empty guide.
+- Focus-to-main: nothing added. `app.ts` already keys it on `SECTION_VIEW:<route>`; `shell.test.ts` now clicks the new route and checks it.
+- Part 8 slot: untouched; it lives in the card (`planning-suggestion-slot-<id>`) and in the store's `submit` comment.
+- i18n: `growth.planningRequiredPage` + `growth.routes.planningRequired`, fa + en; parity test `planning-required-page-i18n.test.ts`.
+- Tests: new `planning-required-page.test.ts`; edited `shell.test.ts` (Plan sub-nav 4 -> 5), `nav.test.ts`, `ui.test.ts`.
+- NOT RUN: no node_modules/network here, so vitest and the build were not run. Only `tsc --noEmit` ran: clean on `src/` except `main.ts` (missing fonts/CSS module types without node_modules). Run `npm test`/`vitest run` first.

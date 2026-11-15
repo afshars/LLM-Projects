@@ -1,0 +1,388 @@
+--- a/frontend/src/growth-os/i18n/en.ts
++++ b/frontend/src/growth-os/i18n/en.ts
+@@ -1023,7 +1023,7 @@
+         label: "Planning preferences",
+         intro: "How you like your days planned.",
+         empty: { title: "No preferences saved yet", nextStep: "Tell the mentor how you like to plan your day in chat and it will remember." },
+-        ready: "Your preferences are ready. Editing them arrives in the next update.",
++        ready: "Your preferences are ready to edit.",
+       },
+       goals: {
+         label: "Your goals",
+@@ -1098,6 +1098,43 @@
+         },
+       },
+     },
++    // Part 17c-1: the Preferences tab editor (KeyValueEditor). `editor` is passed to the component as its labels
++    // ({n} = the row number, {key} = the row's name). `errors` are the codes of state/preference-rows.ts
++    // (PreferenceErrorCode), looked up at render time. Server error text comes from errorMessage(err), never from here.
++    preferencesForm: {
++      formLabel: "Planning preferences",
++      hint: "Each preference has a name and a value. Names must all be different.",
++      editor: {
++        list: "Your preferences",
++        row: "Preference {n}",
++        keyLabel: "Preference {n} name",
++        valueLabel: "Preference {n} value",
++        typeLabel: "Preference {n} type",
++        remove: "Remove",
++        removeLabel: "Remove preference {n}",
++        add: "Add preference",
++        lockedNote: "Preference {n} holds a list or a group of values, which can't be edited here. It stays as it is.",
++        types: { string: "Text", number: "Number", boolean: "Yes or no" },
++        booleanOptions: { true: "Yes", false: "No" },
++        rowAdded: "Preference {n} added.",
++        rowRemoved: "Preference {n} removed.",
++        keyPlaceholder: "For example: tone",
++        valuePlaceholder: "For example: casual",
++      },
++      empty: {
++        title: "No preferences saved yet",
++        description: "Preferences tell the mentor how you like things done, such as the tone it uses or the time of day you work best.",
++        nextStep: "Add your first preference: a short name and its value.",
++        action: "Add first preference",
++      },
++      errors: {
++        keyRequired: "Enter a name for this preference, or remove it.",
++        keyDuplicate: "Another preference already uses this name. Names must be different.",
++        keyTooLong: "This name is too long. Use a shorter one.",
++        valueNotNumber: "Enter a number, for example 25 or 1.5.",
++        valueNotBoolean: "Choose yes or no.",
++      },
++    },
+   },
+   // Part 16a: Behavior page shell (tabs, refresh, empty states). Error TEXT comes from errorMessage(err); the lists arrive in 16b-16d.
+   behaviorPage: {
+--- a/frontend/src/growth-os/i18n/fa.ts
++++ b/frontend/src/growth-os/i18n/fa.ts
+@@ -1011,7 +1011,7 @@
+         label: "ترجیحات برنامه‌ریزی",
+         intro: "اینکه دوست داری روزهایت چطور برنامه‌ریزی شود.",
+         empty: { title: "هنوز ترجیحی ذخیره نشده", nextStep: "در گفتگو بگو دوست داری روزت را چطور برنامه‌ریزی کنی تا به خاطر بسپارد." },
+-        ready: "ترجیحاتت آماده است. ویرایششان در به‌روزرسانی بعدی می‌آید.",
++        ready: "ترجیحاتت آماده‌ی ویرایش است.",
+       },
+       goals: {
+         label: "اهداف تو",
+@@ -1086,6 +1086,43 @@
+         },
+       },
+     },
++    // Part 17c-1: the Preferences tab editor (KeyValueEditor). `editor` is passed to the component as its labels
++    // ({n} = the row number, {key} = the row's name). `errors` are the codes of state/preference-rows.ts
++    // (PreferenceErrorCode), looked up at render time. Server error text comes from errorMessage(err), never from here.
++    preferencesForm: {
++      formLabel: "ترجیحات برنامه‌ریزی",
++      hint: "هر ترجیح یک نام و یک مقدار دارد. نام‌ها باید با هم فرق داشته باشند.",
++      editor: {
++        list: "ترجیحات تو",
++        row: "ترجیح {n}",
++        keyLabel: "نام ترجیح {n}",
++        valueLabel: "مقدار ترجیح {n}",
++        typeLabel: "نوع ترجیح {n}",
++        remove: "حذف",
++        removeLabel: "حذف ترجیح {n}",
++        add: "افزودن ترجیح",
++        lockedNote: "ترجیح {n} شامل فهرست یا مجموعه‌ای از مقدارهاست و اینجا قابل ویرایش نیست. همان‌طور که هست می‌ماند.",
++        types: { string: "متن", number: "عدد", boolean: "بله یا خیر" },
++        booleanOptions: { true: "بله", false: "خیر" },
++        rowAdded: "ترجیح {n} اضافه شد.",
++        rowRemoved: "ترجیح {n} حذف شد.",
++        keyPlaceholder: "مثلاً: tone",
++        valuePlaceholder: "مثلاً: casual",
++      },
++      empty: {
++        title: "هنوز ترجیحی ذخیره نشده",
++        description: "ترجیحات به همراه هوشمند می‌گویند دوست داری کارها چطور انجام شوند؛ مثلاً لحن گفتگو یا ساعتی از روز که بهتر کار می‌کنی.",
++        nextStep: "اولین ترجیحت را اضافه کن: یک نام کوتاه و مقدارش.",
++        action: "افزودن اولین ترجیح",
++      },
++      errors: {
++        keyRequired: "برای این ترجیح یک نام بنویس، یا حذفش کن.",
++        keyDuplicate: "ترجیح دیگری همین نام را دارد. نام‌ها باید با هم فرق داشته باشند.",
++        keyTooLong: "این نام خیلی بلند است. نام کوتاه‌تری بنویس.",
++        valueNotNumber: "یک عدد بنویس، مثلاً 25 یا 1.5.",
++        valueNotBoolean: "بله یا خیر را انتخاب کن.",
++      },
++    },
+   },
+   // Part 16a: Behavior page shell (tabs, refresh, empty states). Error TEXT comes from errorMessage(err); the lists arrive in 16b-16d.
+   behaviorPage: {
+--- a/frontend/src/lib/ui/index.ts
++++ b/frontend/src/lib/ui/index.ts
+@@ -11,6 +11,15 @@
+ export type { EmptyStateAction, EmptyStateOptions } from "./empty-state-guide";
+ export { clearFieldDraft, clearFieldDraftsByPrefix, formField } from "./form-field";
+ export type { FormControl, FormFieldHandle, FormFieldOptions } from "./form-field";
++export { fillLabel, keyValueEditor } from "./key-value-editor";
++export type {
++  KeyValueEditorHandle,
++  KeyValueEditorLabels,
++  KeyValueEditorOptions,
++  KeyValueRow,
++  KeyValueRowErrors,
++  KeyValueType,
++} from "./key-value-editor";
+ export { reviewAndConfirm } from "./review-and-confirm";
+ export type { ReviewAndConfirmOptions, ReviewItemContext } from "./review-and-confirm";
+ export { scoreBar } from "./score-bar";
+--- a/frontend/src/state/user-intelligence-flow.ts
++++ b/frontend/src/state/user-intelligence-flow.ts
+@@ -1,8 +1,10 @@
+ import { apiClient } from "../api/client";
+ import type { UserGoalsOut, UserPreferences, UserProfileOut } from "../api/types";
+ import { handleAuthExpiry } from "../lib/auth-guard";
++import { PREFERENCES_DRAFT_CODEC } from "./preference-rows";
++import type { PreferenceRow } from "./preference-rows";
+ import { uiApplyLoaded, uiCanRefresh, uiFail, uiMarkLoading, uiNeedsLoad, userIntelligenceStore } from "./user-intelligence";
+-import type { UiSlice, UiSliceName } from "./user-intelligence";
++import type { UiDraftCodec, UiSlice, UiSliceName } from "./user-intelligence";
+ 
+ /**
+  * Part 17a-1: the one place that turns the ui slices into GET requests. No DOM, no translated text.
+@@ -28,11 +30,12 @@
+ const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+ 
+ /** One GET for one slice. A body that is not an object (malformed) is an "unknown" error, never stored as data. */
+-async function run<T>(
++async function run<T, D = T>(
+   name: UiSliceName,
+-  get: () => UiSlice<T>,
+-  put: (slice: UiSlice<T>) => void,
+-  call: () => Promise<T>
++  get: () => UiSlice<T, D>,
++  put: (slice: UiSlice<T, D>) => void,
++  call: () => Promise<T>,
++  codec?: UiDraftCodec<T, D>
+ ): Promise<UiOutcome> {
+   const started = userIntelligenceStore.generation(name);
+   const stale = () => userIntelligenceStore.generation(name) !== started;
+@@ -44,7 +47,7 @@
+       put(uiFail(get(), null));
+       return "failed";
+     }
+-    put(uiApplyLoaded(get(), answer));
++    put(uiApplyLoaded(get(), answer, codec));
+     return "ok";
+   } catch (err) {
+     if (stale()) return "skipped";
+@@ -64,11 +67,13 @@
+ }
+ 
+ function fetchPreferences(): Promise<UiOutcome> {
+-  return run<UserPreferences>(
++  // Part 17c-1: the draft of this slice is a list of editor rows, built once from the loaded dict.
++  return run<UserPreferences, PreferenceRow[]>(
+     "uiPreferences",
+     () => userIntelligenceStore.getSlice("uiPreferences"),
+     (s) => userIntelligenceStore.set("uiPreferences", s),
+-    () => apiClient.getUserPreferences()
++    () => apiClient.getUserPreferences(),
++    PREFERENCES_DRAFT_CODEC
+   );
+ }
+ 
+--- a/frontend/src/state/user-intelligence.ts
++++ b/frontend/src/state/user-intelligence.ts
+@@ -1,6 +1,8 @@
+ import type { ApiError, UserGoalsOut, UserPreferences, UserProfileOut } from "../api/types";
+ import { isApiError } from "../lib/dom";
+ import { journey } from "./journey";
++import { PREFERENCES_DRAFT_CODEC } from "./preference-rows";
++import type { PreferenceRow } from "./preference-rows";
+ 
+ /**
+  * Part 17a-1: state of the /user-intelligence/* forms (profile, preferences, goals). NO UI, NO fetch, NO translated
+@@ -16,6 +18,9 @@
+  *   data    the last answer from the server (null until the first success, and after invalidate).
+  *   draft   what the form holds (a deep copy of data that the form edits). Lives here, not in the DOM, because
+  *           app.ts rebuilds the whole view on a language change. Compare the two with diffForPartialPut(data, draft).
++ *           Part 17c-1: a slice may have a draft of ANOTHER shape than its data (UiSlice<T, D>): `uiPreferences` holds
++ *           a list of editor rows (PreferenceRow[], state/preference-rows.ts) because a dict cannot hold a blank or a
++ *           repeated key while the user is typing. Such a slice passes a UiDraftCodec to the pure functions below.
+  *   status  idle | loading | success | error
+  *   error   the ApiError while status === "error" (read `.kind`; the text is built at render time).
+  *
+@@ -37,11 +42,11 @@
+ 
+ export type UiStatus = "idle" | "loading" | "success" | "error";
+ 
+-export interface UiSlice<T> {
++export interface UiSlice<T, D = T> {
+   /** null until the first success (and after invalidate). */
+   readonly data: T | null;
+   /** The form's working copy. null exactly when data is null. */
+-  readonly draft: T | null;
++  readonly draft: D | null;
+   readonly status: UiStatus;
+   /** Set only while status === "error"; use .kind. */
+   readonly error: ApiError | null;
+@@ -49,7 +54,8 @@
+ 
+ export interface UiState {
+   readonly uiProfile: UiSlice<UserProfileOut>;
+-  readonly uiPreferences: UiSlice<UserPreferences>;
++  /** Part 17c-1: the draft is the editor's row list; `data` stays the dict the server sent. */
++  readonly uiPreferences: UiSlice<UserPreferences, PreferenceRow[]>;
+   readonly uiGoals: UiSlice<UserGoalsOut>;
+ }
+ 
+@@ -60,7 +66,7 @@
+ const IDLE: UiSlice<never> = Object.freeze({ data: null, draft: null, status: "idle" as UiStatus, error: null });
+ 
+ /** Pure. A slice nothing has been asked for. */
+-export function idleUiSlice<T>(): UiSlice<T> {
++export function idleUiSlice<T, D = T>(): UiSlice<T, D> {
+   return IDLE;
+ }
+ 
+@@ -83,37 +89,50 @@
+   return JSON.stringify(a) === JSON.stringify(b);
+ }
+ 
++/** How a slice whose draft is not a copy of its data builds and compares its draft. Without one the draft is a deep copy. */
++export interface UiDraftCodec<T, D> {
++  /** A fresh draft for `data` (called on the first load, after a save, on discard, and when a refresh may replace the draft). */
++  toDraft(data: T): D;
++  /** True when `draft` holds no edit compared with `data` (so a refresh may replace it). */
++  isUntouched(draft: D, data: T): boolean;
++}
++
++function codecOrCopy<T, D>(codec?: UiDraftCodec<T, D>): UiDraftCodec<T, D> {
++  return codec ?? ({ toDraft: (data: T) => cloneUi(data) as unknown as D, isUntouched: (draft: D, data: T) => sameJson(draft, data) } as UiDraftCodec<T, D>);
++}
++
+ /** Pure. status "loading"; keeps data and draft, clears an old error. */
+-export function uiMarkLoading<T>(slice: UiSlice<T>): UiSlice<T> {
++export function uiMarkLoading<T, D = T>(slice: UiSlice<T, D>): UiSlice<T, D> {
+   return Object.freeze({ data: slice.data, draft: slice.draft, status: "loading" as UiStatus, error: null });
+ }
+ 
+ /** Pure. A successful GET. First answer (no data yet): draft = copy of it. Refresh: the draft follows the new data
+  * only when it was untouched (equal to the old data); unsaved edits are kept. */
+-export function uiApplyLoaded<T>(slice: UiSlice<T>, data: T): UiSlice<T> {
+-  const untouched = slice.data === null || slice.draft === null || sameJson(slice.draft, slice.data);
+-  return Object.freeze({ data, draft: untouched ? cloneUi(data) : slice.draft, status: "success" as UiStatus, error: null });
++export function uiApplyLoaded<T, D = T>(slice: UiSlice<T, D>, data: T, codec?: UiDraftCodec<T, D>): UiSlice<T, D> {
++  const c = codecOrCopy(codec);
++  const untouched = slice.data === null || slice.draft === null || c.isUntouched(slice.draft, slice.data);
++  return Object.freeze({ data, draft: untouched ? c.toDraft(data) : slice.draft, status: "success" as UiStatus, error: null });
+ }
+ 
+ /** Pure. A successful PUT: data and draft both become the server's answer. */
+-export function uiApplySaved<T>(_slice: UiSlice<T>, data: T): UiSlice<T> {
+-  return Object.freeze({ data, draft: cloneUi(data), status: "success" as UiStatus, error: null });
++export function uiApplySaved<T, D = T>(_slice: UiSlice<T, D>, data: T, codec?: UiDraftCodec<T, D>): UiSlice<T, D> {
++  return Object.freeze({ data, draft: codecOrCopy(codec).toDraft(data), status: "success" as UiStatus, error: null });
+ }
+ 
+ /** Pure. The form changed: replace the draft. Ignored while there is no data (nothing to edit yet). */
+-export function uiWithDraft<T>(slice: UiSlice<T>, draft: T): UiSlice<T> {
++export function uiWithDraft<T, D = T>(slice: UiSlice<T, D>, draft: D): UiSlice<T, D> {
+   if (slice.data === null) return slice;
+   return Object.freeze({ data: slice.data, draft, status: slice.status, error: slice.error });
+ }
+ 
+ /** Pure. Discard unsaved edits: draft back to a copy of data. */
+-export function uiResetDraft<T>(slice: UiSlice<T>): UiSlice<T> {
++export function uiResetDraft<T, D = T>(slice: UiSlice<T, D>, codec?: UiDraftCodec<T, D>): UiSlice<T, D> {
+   if (slice.data === null) return slice;
+-  return Object.freeze({ data: slice.data, draft: cloneUi(slice.data), status: slice.status, error: slice.error });
++  return Object.freeze({ data: slice.data, draft: codecOrCopy(codec).toDraft(slice.data), status: slice.status, error: slice.error });
+ }
+ 
+ /** Pure. A failed GET: status "error", the ApiError kept (a non-ApiError becomes kind "unknown"), data and draft kept. */
+-export function uiFail<T>(slice: UiSlice<T>, err: unknown): UiSlice<T> {
++export function uiFail<T, D = T>(slice: UiSlice<T, D>, err: unknown): UiSlice<T, D> {
+   const error: ApiError = isApiError(err) ? err : { kind: "unknown", status: null, message: "" };
+   return Object.freeze({ data: slice.data, draft: slice.draft, status: "error" as UiStatus, error });
+ }
+@@ -183,7 +202,8 @@
+ export function setUiProfileDraft(draft: UserProfileOut): void {
+   userIntelligenceStore.set("uiProfile", uiWithDraft(userIntelligenceStore.getSlice("uiProfile"), draft));
+ }
+-export function setUiPreferencesDraft(draft: UserPreferences): void {
++/** Part 17c-1: the draft of the preferences slice is the editor's row list (state/preference-rows.ts). */
++export function setUiPreferencesDraft(draft: PreferenceRow[]): void {
+   userIntelligenceStore.set("uiPreferences", uiWithDraft(userIntelligenceStore.getSlice("uiPreferences"), draft));
+ }
+ export function setUiGoalsDraft(draft: UserGoalsOut): void {
+@@ -195,7 +215,7 @@
+   userIntelligenceStore.set("uiProfile", uiApplySaved(userIntelligenceStore.getSlice("uiProfile"), answer));
+ }
+ export function applySavedUiPreferences(answer: UserPreferences): void {
+-  userIntelligenceStore.set("uiPreferences", uiApplySaved(userIntelligenceStore.getSlice("uiPreferences"), answer));
++  userIntelligenceStore.set("uiPreferences", uiApplySaved(userIntelligenceStore.getSlice("uiPreferences"), answer, PREFERENCES_DRAFT_CODEC));
+ }
+ export function applySavedUiGoals(answer: UserGoalsOut): void {
+   userIntelligenceStore.set("uiGoals", uiApplySaved(userIntelligenceStore.getSlice("uiGoals"), answer));
+@@ -206,7 +226,7 @@
+   userIntelligenceStore.set("uiProfile", uiResetDraft(userIntelligenceStore.getSlice("uiProfile")));
+ }
+ export function resetUiPreferencesDraft(): void {
+-  userIntelligenceStore.set("uiPreferences", uiResetDraft(userIntelligenceStore.getSlice("uiPreferences")));
++  userIntelligenceStore.set("uiPreferences", uiResetDraft(userIntelligenceStore.getSlice("uiPreferences"), PREFERENCES_DRAFT_CODEC));
+ }
+ export function resetUiGoalsDraft(): void {
+   userIntelligenceStore.set("uiGoals", uiResetDraft(userIntelligenceStore.getSlice("uiGoals")));
+--- a/frontend/src/styles/components.css
++++ b/frontend/src/styles/components.css
+@@ -242,3 +242,22 @@
+ /* emptyStateGuide with a secondaryAction: the two buttons side by side, wrapping on narrow screens */
+ .ui-empty__actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-block-start: var(--space-2); }
+ .ui-empty__actions .ui-empty__cta { margin-block-start: 0; }
++
++/* ---------------- KeyValueEditor (Part 17c-1, lib/ui/key-value-editor.ts) ----------------
++   Rows of key + value. Everything can shrink (min-width: 0); long text wraps; nothing widens the page. */
++.ui-kv { display: grid; gap: var(--space-3); min-width: 0; max-width: 100%; }
++.ui-kv__list { display: grid; gap: var(--space-3); margin: 0; padding: 0; list-style: none; min-width: 0; }
++.ui-kv__row { min-width: 0; }
++.ui-kv__group { display: grid; gap: var(--space-2); min-width: 0; padding: var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-surface); }
++.ui-kv__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); min-width: 0; }
++.ui-kv__title { font-weight: var(--weight-medium); overflow-wrap: anywhere; }
++.ui-kv__fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: var(--space-3); min-width: 0; }
++.ui-kv__field { min-width: 0; margin: 0; }
++.ui-kv__label { display: block; overflow-wrap: anywhere; }
++.ui-kv__input { max-width: 100%; inline-size: 100%; box-sizing: border-box; }
++.ui-kv__input[aria-invalid="true"] { border-color: var(--color-danger-border); }
++.ui-kv__input[readonly] { color: var(--color-text-muted); }
++.ui-kv__error, .ui-kv__locked { margin: 0; overflow-wrap: anywhere; }
++.ui-kv__error[hidden] { display: none; }
++.ui-kv__remove { min-height: var(--size-touch); flex: none; }
++.ui-kv__add { justify-self: start; min-height: var(--size-touch); }
+--- a/frontend/src/styles/my-profile.css
++++ b/frontend/src/styles/my-profile.css
+@@ -96,3 +96,8 @@
+ .my-profile-save__actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+ .my-profile-save__hint, .my-profile-save__wait { margin: 0; overflow-wrap: anywhere; }
+ .my-profile-save__problems { justify-self: start; }
++
++/* ---- Part 17c-1: Preferences tab. The editor's own styles are .ui-kv* in components.css. ---- */
++.my-profile-preferences { min-width: 0; }
++.my-profile-preferences__content { display: grid; gap: var(--space-3); min-width: 0; }
++.my-profile-preferences__hint { margin: 0; overflow-wrap: anywhere; }
+--- a/frontend/src/views/my-profile-tabs.ts
++++ b/frontend/src/views/my-profile-tabs.ts
+@@ -3,6 +3,7 @@
+ import { t } from "../lib/theme-i18n";
+ import type { UserGoalsOut, UserPreferences, UserProfileOut } from "../api/types";
+ import { journey } from "../state/journey";
++import { renderPreferencesTab } from "./my-profile-preferences";
+ import { mountSliceTab } from "./my-profile-slice-tab";
+ import type { SliceTabOptions } from "./my-profile-slice-tab";
+ import type { UiSliceName } from "../state/user-intelligence";
+@@ -83,8 +84,13 @@
+     id: "preferences",
+     labelKey: "preferences",
+     containerId: "my-profile-preferences-body",
++    // Part 17c-1: "empty" is decided by the view from the DRAFT rows (its own empty guide with "Add first preference"),
++    // so the slice-level isEmpty is always false: an empty dict still shows the editor, never the generic guide.
+     render: (container) =>
+-      mountSliceTab<UserPreferences>(container, sliceOptions<UserPreferences>("preferences", "uiPreferences", (p) => Object.keys(p).length === 0)),
++      mountSliceTab<UserPreferences>(container, {
++        ...sliceOptions<UserPreferences>("preferences", "uiPreferences", () => false),
++        renderReady: renderPreferencesTab,
++      }),
+   },
+   {
+     id: "goals",

@@ -1,0 +1,114 @@
+/* The Reflect screen: three evening questions + the last seven days.
+   Tokens only (no raw colours), logical properties only (fa RTL / en LTR), both themes through the tokens.
+   The page title (h1) comes from the section view; the card, buttons and error banner come from the shared styles. */
+
+.reflect-page { display: flex; flex-direction: column; gap: var(--space-4); }
+.reflect { display: flex; flex-direction: column; gap: var(--space-4); }
+
+.reflect-date { margin: 0; color: var(--color-text-muted); font-size: var(--text-sm); }
+.reflect-intro { margin: 0; color: var(--color-text-muted); font-size: var(--text-md); }
+
+.reflect-question { display: flex; flex-direction: column; gap: var(--space-3); margin: 0; }
+.reflect-question__title { margin: 0; font-size: var(--text-lg); font-weight: var(--weight-bold); color: var(--color-text); }
+.reflect-question__hint { margin: 0; color: var(--color-text-muted); font-size: var(--text-sm); }
+.reflect-note { margin: 0; color: var(--color-text-muted); font-size: var(--text-md); }
+.reflect-field__hint { margin: 0; color: var(--color-text-muted); font-size: var(--text-xs); }
+
+/* Question 1: the Highlight, quoted, and one yes box. The whole row is the tap target (44px). */
+.reflect-highlight {
+  margin: 0;
+  padding-inline-start: var(--space-3);
+  border-inline-start: 3px solid var(--color-accent);
+  color: var(--color-text);
+  font-size: var(--text-md);
+  overflow-wrap: anywhere;
+}
+.reflect-check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-block-size: var(--size-touch);
+  padding-inline: var(--space-2);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  font-size: var(--text-md);
+  cursor: pointer;
+}
+.reflect-check:hover { background: rgba(var(--color-accent-rgb), 0.08); }
+.reflect-check__box { flex: none; inline-size: 22px; block-size: 22px; margin: 0; accent-color: var(--color-accent); cursor: pointer; }
+.reflect-check__box:focus-visible { outline: 2px solid var(--color-focus-ring); outline-offset: 2px; }
+
+/* Question 2: ten numbers, one choice. The native radio stays in the DOM (keyboard + screen reader) and only the
+   number is drawn. Five per row on a phone, ten per row when there is room. */
+.reflect-energy { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--space-2); }
+@media (min-width: 36rem) {
+  .reflect-energy { grid-template-columns: repeat(10, minmax(0, 1fr)); }
+}
+.reflect-energy__option { position: relative; display: flex; }
+.reflect-energy__radio { position: absolute; inline-size: 1px; block-size: 1px; margin: 0; opacity: 0; }
+.reflect-energy__number {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-block-size: var(--size-touch);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-solid);
+  color: var(--color-text);
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+.reflect-energy__option:hover .reflect-energy__number { background: rgba(var(--color-accent-rgb), 0.08); }
+.reflect-energy__radio:checked + .reflect-energy__number {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-accent-contrast);
+}
+.reflect-energy__radio:focus-visible + .reflect-energy__number { outline: 2px solid var(--color-focus-ring); outline-offset: 2px; }
+
+/* Question 3: one sentence. */
+.reflect-input {
+  inline-size: 100%;
+  min-block-size: var(--size-touch);
+  padding-block: var(--space-2);
+  padding-inline: var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-solid);
+  color: var(--color-text);
+  font-size: var(--text-md);
+  font-family: inherit;
+  resize: vertical;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.reflect-input::placeholder { color: var(--color-text-faint); }
+.reflect-input:focus-visible { outline: 2px solid var(--color-focus-ring); outline-offset: 1px; }
+
+/* Saving status: quiet text, or the error with its retry button. */
+.reflect-status { min-block-size: var(--space-6); display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); color: var(--color-text-muted); font-size: var(--text-sm); }
+.reflect-status .error-banner { margin: 0; flex: 1 1 14rem; }
+
+/* Last seven days: a date and a word. Meaning is in the word, never in the colour alone. */
+.reflect-recent { display: flex; flex-direction: column; gap: var(--space-3); margin: 0; }
+.reflect-recent__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.reflect-recent__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-block: var(--space-2);
+  border-block-end: 1px solid var(--color-border);
+  font-size: var(--text-md);
+}
+.reflect-recent__row:last-child { border-block-end: 0; }
+.reflect-recent__date { color: var(--color-text); }
+.reflect-recent__result { color: var(--color-text-muted); }
+.reflect-recent__result--yes { color: var(--color-success); font-weight: var(--weight-medium); }
+.reflect-recent__result--none { color: var(--color-text-faint); }
+
+/* "Did you use today's tactic?": two radio answers side by side. */
+.reflect-tactic-options { display: flex; flex-wrap: wrap; gap: var(--space-3); }

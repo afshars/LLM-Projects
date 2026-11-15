@@ -1,0 +1,371 @@
+--- a/frontend/smoke/journey-map.test.ts
++++ b/frontend/smoke/journey-map.test.ts
+@@ -30,7 +30,7 @@
+ }
+ 
+ describe("journey map: shape", () => {
+-  it("lists the 15 steps of the journey, in order (Part 20b added goals and goalTree)", () => {
++  it("lists the 17 steps of the journey, in order (Part 20b added goals and goalTree; Part 20c the side pages planProposal and busyBlocks)", () => {
+     expect(ids(JOURNEY_STEPS)).toEqual([
+       "signUp",
+       "activeHours",
+@@ -47,6 +47,8 @@
+       "progressCheck",
+       "weeklyGrowth",
+       "behaviorPatterns",
++      "planProposal",
++      "busyBlocks",
+     ]);
+   });
+ 
+@@ -65,7 +67,7 @@
+     expect(ids(getNextSteps("decompose"))).toEqual(["planning"]);
+     expect(ids(getNextSteps("planning"))).toEqual(["dailyPlan"]);
+     expect(ids(getNextSteps("dailyPlan"))).toEqual(["whatNow"]);
+-    expect(ids(getNextSteps("whatNow"))).toEqual(["focus"]);
++    expect(ids(getNextSteps("whatNow"))).toEqual(["focus", "planning"]); // Part 20c: nothing to suggest -> plan more
+     expect(ids(getNextSteps("focus"))).toEqual(["feedback"]);
+     expect(ids(getNextSteps("feedback"))).toEqual(["progressCheck"]);
+     expect(ids(getNextSteps("progressCheck"))).toEqual(["weeklyGrowth"]);
+@@ -202,8 +204,8 @@
+     expect(ids(getAvailableNextSteps("dailyPlan", ctx({ step: "DAILY_PLAN" })))).toEqual([]);
+     expect(ids(getAvailableNextSteps("dailyPlan", ctx({ step: "CHAT" })))).toEqual(["whatNow"]);
+     // focus is only a button while a session exists
+-    expect(ids(getAvailableNextSteps("whatNow", ctx({ step: "DAILY_PLAN" })))).toEqual([]);
+-    expect(ids(getAvailableNextSteps("whatNow", ctx({ step: "DAILY_PLAN", focusTask: { taskId: "5", title: "T" }, focusSession: session("active") })))).toEqual(["focus"]);
++    expect(ids(getAvailableNextSteps("whatNow", ctx({ step: "DAILY_PLAN" })))).toEqual(["planning"]);
++    expect(ids(getAvailableNextSteps("whatNow", ctx({ step: "DAILY_PLAN", focusTask: { taskId: "5", title: "T" }, focusSession: session("active") })))).toEqual(["focus", "planning"]);
+     expect(ids(getAvailableNextSteps("nope", ctx()))).toEqual([]);
+   });
+ });
+--- a/frontend/smoke/journey-next-step.test.ts
++++ b/frontend/smoke/journey-next-step.test.ts
+@@ -73,7 +73,8 @@
+     expect(journeyNextStep({ stepId: "nope" as never })).toBeNull();
+     journey.goTo("DAILY_PLAN");
+     expect(journeyNextStep({ stepId: "dailyPlan" })).toBeNull(); // "what now" is a card on this very page
+-    expect(journeyNextStep({ stepId: "whatNow" })).toBeNull(); // no focus session to go back to
++    expect(journeyNextStep({ stepId: "whatNow" })!.querySelector("button")!.getAttribute("data-journey-to")).toBe("planning"); // Part 20c: no focus session to go back to, but planning more is offered
++    expect(journeyNextStep({ stepId: "whatNow", facts: { planningNone: true } })).toBeNull(); // planning done -> Today, the page the user is on
+     journey.startFocus("5", "Write tests", { ...SESSION, status: "active", completed_at: null });
+     journey.goTo("DAILY_PLAN");
+     expect(journeyNextStep({ stepId: "whatNow" })!.querySelector("button")!.textContent).toBe("Back to my focus session");
+--- a/frontend/src/growth-os/i18n/en.ts
++++ b/frontend/src/growth-os/i18n/en.ts
+@@ -47,6 +47,8 @@
+       progressCheck: "Progress check",
+       weeklyGrowth: "Weekly growth",
+       behaviorPatterns: "Behavior patterns",
++      planProposal: "Plan interview",
++      busyBlocks: "Busy blocks",
+     } as Record<JourneyStepId, string>,
+     cta: {
+       signUp: "Create my account",
+@@ -64,6 +66,8 @@
+       progressCheck: "Check my progress",
+       weeklyGrowth: "See my weekly growth",
+       behaviorPatterns: "See my behavior patterns",
++      planProposal: "Plan my day with an interview",
++      busyBlocks: "Edit my busy blocks",
+     } as Record<JourneyStepId, string>,
+     // Part 20b: the line above a group of next-step buttons, where the screen has no text of its own to lead into them.
+     lead: {
+@@ -627,6 +631,10 @@
+   // Part 10: the busy-blocks page (views/busy-blocks.ts).
+   busyBlocksPage: {
+     intro: "Mark the times you are not available. Your daily plan is built around them.",
++    next: {
++      lead: "Your busy blocks changed, so today's plan will be rebuilt around them.",
++      today: "Go to Today",
++    },
+     form: {
+       title: "Add a busy block",
+       date: "Date",
+--- a/frontend/src/growth-os/i18n/fa.ts
++++ b/frontend/src/growth-os/i18n/fa.ts
+@@ -46,6 +46,8 @@
+       progressCheck: "بررسی پیشرفت",
+       weeklyGrowth: "رشد هفتگی",
+       behaviorPatterns: "الگوهای رفتاری",
++      planProposal: "مصاحبه‌ی برنامه‌ریزی",
++      busyBlocks: "بازه‌های مشغول",
+     },
+     cta: {
+       signUp: "ساختن حساب",
+@@ -63,6 +65,8 @@
+       progressCheck: "بررسی پیشرفتم",
+       weeklyGrowth: "دیدن رشد هفتگی‌ام",
+       behaviorPatterns: "دیدن الگوهای رفتاری‌ام",
++      planProposal: "برنامه‌ی روزم را با مصاحبه بریز",
++      busyBlocks: "ویرایش بازه‌های مشغول",
+     },
+     lead: {
+       newAccount: "خوش آمدی! اول بگو چه ساعت‌هایی وقت داری تا برنامه‌ات با روز تو جور شود.",
+@@ -616,6 +620,10 @@
+   // Part 10: the busy-blocks page (views/busy-blocks.ts).
+   busyBlocksPage: {
+     intro: "زمان‌هایی را که در دسترس نیستی مشخص کن. برنامه‌ی روزانه‌ات دور آن‌ها ساخته می‌شود.",
++    next: {
++      lead: "بازه‌های مشغولت عوض شد، پس برنامه‌ی امروز دوباره دور آن‌ها ساخته می‌شود.",
++      today: "رفتن به امروز",
++    },
+     form: {
+       title: "افزودن بازه‌ی مشغول",
+       date: "تاریخ",
+--- a/frontend/src/lib/journey-next-step.ts
++++ b/frontend/src/lib/journey-next-step.ts
+@@ -49,6 +49,9 @@
+   className?: string;
+   /** Every button secondary (no primary): for a screen whose own buttons are the main action (Part 20b: the planning list). */
+   quiet?: boolean;
++  /** Part 20c: text for a button, by the step it leads TO, where the screen says it its own way ("Go to Today" after a
++   * save). Missing = the shared copy (`growth.journey.cta`). Read at build time, so pass translated text. */
++  labels?: Partial<Record<JourneyStepId, string>>;
+ }
+ 
+ /** The context the buttons are decided from: the live store plus the facts read from the stores, then the caller's own
+@@ -88,7 +91,7 @@
+ 
+   const j = t().growth.journey;
+   const buttons = next.map((step, index) => {
+-    const button = el("button", { class: `${index === 0 && !props.quiet ? "btn-primary" : "btn-secondary"} journey-next__cta`, type: "button", "data-journey-to": step.id }, [j.cta[step.labelKey]]);
++    const button = el("button", { class: `${index === 0 && !props.quiet ? "btn-primary" : "btn-secondary"} journey-next__cta`, type: "button", "data-journey-to": step.id }, [props.labels?.[step.labelKey] ?? j.cta[step.labelKey]]);
+     button.addEventListener("click", () => {
+       if (goToJourneyStep(step)) props.onNavigate?.(step.id);
+     });
+--- a/frontend/src/state/journey-map.ts
++++ b/frontend/src/state/journey-map.ts
+@@ -39,7 +39,10 @@
+   | "feedback"
+   | "progressCheck"
+   | "weeklyGrowth"
+-  | "behaviorPatterns";
++  | "behaviorPatterns"
++  // Part 20c: two side pages of the daily loop. They are entered from the nav bar, not from a previous step (`sidePage`).
++  | "planProposal" // the plan interview's proposal screen, after a confirm
++  | "busyBlocks"; // the Busy blocks page, after adding or removing a block
+ 
+ /** What a step points at: a registry sub-route (by its RouteKey) or a legacy store Step. */
+ export type JourneyTargetKey = RouteKey | Step;
+@@ -88,6 +91,9 @@
+   /** Part 20b: when the entry guard (`requires`) is not met, offer this step instead of dropping the button
+    * (Brain Dump creates no goal, so "break the goal down" becomes "go to your goals"). */
+   readonly unavailableInstead?: JourneyStepId;
++  /** Part 20c: a page the user opens from the nav bar rather than from a previous step. It is a starting point for
++   * `journeyMapProblems`' reachability check (nothing has to lead to it), and its own `nextStepIds` still apply. */
++  readonly sidePage?: true;
+ }
+ 
+ /** In journey order. Brain Dump and create goal are alternatives (both follow active hours, both lead to decompose). */
+@@ -121,12 +127,16 @@
+   { id: "planning", routeKey: "planningRequired", labelKey: "planning", nextStepIds: ["dailyPlan"], satisfiedWhen: { fact: "planningNone" } },
+   { id: "dailyPlan", routeKey: "DAILY_PLAN", labelKey: "dailyPlan", nextStepIds: ["whatNow"] },
+   // "What should I do now?" is a card INSIDE the daily plan page (views/next-action-now.ts), not a screen of its own.
+-  { id: "whatNow", routeKey: "DAILY_PLAN", labelKey: "whatNow", nextStepIds: ["focus"] },
++  // Part 20c: nothing left to suggest -> plan more (`planning`); the card passes `planningNone: false` there, see views/next-action-now.ts.
++  { id: "whatNow", routeKey: "DAILY_PLAN", labelKey: "whatNow", nextStepIds: ["focus", "planning"] },
+   { id: "focus", routeKey: "FOCUS_EXECUTION", labelKey: "focus", nextStepIds: ["feedback"], requires: "focusSession" },
+   { id: "feedback", routeKey: "FOCUS_FEEDBACK", labelKey: "feedback", nextStepIds: ["progressCheck"], requires: "finishedFocusSession" },
+   { id: "progressCheck", routeKey: "progressCheck", labelKey: "progressCheck", nextStepIds: ["weeklyGrowth"] },
+   { id: "weeklyGrowth", routeKey: "weeklyGrowth", labelKey: "weeklyGrowth", nextStepIds: ["behaviorPatterns"] },
+   { id: "behaviorPatterns", routeKey: "behavior", labelKey: "behaviorPatterns", nextStepIds: ["dailyPlan"], tab: "patterns" },
++  // Part 20c: both end at Today (the daily plan is already marked stale by the confirm / the busy block change).
++  { id: "planProposal", routeKey: "planningInterview", labelKey: "planProposal", nextStepIds: ["dailyPlan"], sidePage: true },
++  { id: "busyBlocks", routeKey: "busyBlocks", labelKey: "busyBlocks", nextStepIds: ["dailyPlan"], sidePage: true },
+ ];
+ 
+ const BY_ID: ReadonlyMap<string, JourneyStep> = new Map(JOURNEY_STEPS.map((s) => [s.id, s]));
+@@ -294,8 +304,10 @@
+   }
+   const first = steps[0];
+   if (first) {
+-    const seen = new Set<string>([first.id]);
+-    const queue = [first.id];
++    // Start points: the first step and every side page (opened from the nav bar, so nothing has to lead to it).
++    const roots = [first.id, ...steps.filter((s) => s.sidePage === true).map((s) => s.id)];
++    const seen = new Set<string>(roots);
++    const queue = [...roots];
+     for (let id = queue.shift(); id !== undefined; id = queue.shift()) {
+       const from = steps.find((s) => s.id === id);
+       const edges = [...(from?.nextStepIds ?? []), ...(from?.satisfiedWhen?.then ? [from.satisfiedWhen.then] : []), ...(from?.unavailableInstead ? [from.unavailableInstead] : [])];
+--- a/frontend/src/styles/busy-blocks.css
++++ b/frontend/src/styles/busy-blocks.css
+@@ -107,3 +107,7 @@
+ .busy-block__time { font-variant-numeric: tabular-nums; font-weight: var(--weight-medium); }
+ .busy-block__label { flex: 1 1 6rem; min-inline-size: 0; overflow-wrap: anywhere; color: var(--color-text-muted); }
+ .busy-block__delete { margin-inline-start: auto; min-block-size: var(--size-touch); }
++
++/* Part 20c: the "Go to Today" CTA after a busy block was added or removed. */
++.busy__next { display: grid; gap: var(--space-2); }
++.busy__next .lead { margin: 0; }
+--- a/frontend/src/styles/components.css
++++ b/frontend/src/styles/components.css
+@@ -290,3 +290,6 @@
+ .journey-welcome { margin-inline: var(--space-4); padding: var(--space-3) var(--space-4); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); min-width: 0; }
+ .journey-welcome__lead { margin: 0; color: var(--color-text); overflow-wrap: anywhere; }
+ .journey-welcome .journey-next { margin-block-start: var(--space-2); }
++
++/* Part 20c: the path to planning under the "What should I do now?" guide when nothing is left to suggest. */
++.now-card__plan { margin-block-start: var(--space-2); }
+--- a/frontend/src/views/busy-blocks.ts
++++ b/frontend/src/views/busy-blocks.ts
+@@ -2,9 +2,11 @@
+ import { handleAuthExpiry } from "../lib/auth-guard";
+ import { el, errorMessage } from "../lib/dom";
+ import { errorBanner } from "../lib/page";
++import { journeyNextStep } from "../lib/journey-next-step";
+ import { getLocale, t } from "../lib/theme-i18n";
+ import { asyncPanel, clearFieldDraft, confirmDialog, formField, submitLock } from "../lib/ui";
+ import type { FormFieldHandle } from "../lib/ui";
++import { busyBlocksChanged, markBusyBlocksChanged, subscribeBusyChange } from "../state/busy-change-signal";
+ import { busyBlocksStore, dateForDisplay, hasBusyBlockErrors, todayIso, trackSpan, validateBusyBlock, weekDates, weekStatus } from "../state/busy-blocks";
+ import type { BusyBlockDraft, BusyBlocksState, BusyBlockErrors } from "../state/busy-blocks";
+ 
+@@ -119,6 +121,7 @@
+           clearFieldDraft(id); // the date stays: adding several blocks for one day is the common case
+         }
+         errorSlot.replaceChildren();
++        markBusyBlocksChanged();
+         announce(c.form.added(formatDay(added.date, { weekday: "long", day: "numeric", month: "long" })));
+       } else if (result.status === "error") {
+         if (handleAuthExpiry(result.error)) return;
+@@ -138,6 +141,18 @@
+     void lock.run(() => busyBlocksStore.add(draft));
+   });
+ 
++  // ---------------- Part 20c: "Go to Today" after a change ----------------
++  // The store already marked the daily plan stale when the block was added / removed. The CTA only navigates:
++  // Today fetches by itself because the plan is stale, so nothing is requested here.
++
++  const nextSlot = el("div", { class: "busy__next" });
++  function drawNext(): void {
++    if (!busyBlocksChanged()) return nextSlot.replaceChildren();
++    const n = t().growth.busyBlocksPage.next;
++    const cta = journeyNextStep({ stepId: "busyBlocks", labels: { dailyPlan: n.today } });
++    nextSlot.replaceChildren(...(cta ? [el("p", { class: "lead" }, [n.lead]), cta] : []));
++  }
++
+   // ---------------- Week toolbar (built once: it keeps focus while the panel below redraws) ----------------
+ 
+   const rangeEl = el("p", { class: "busy__range", "aria-live": "polite" });
+@@ -170,6 +185,7 @@
+       const subject = block.label ? `${block.label} (${range})` : range;
+       const done = await confirmDialog({ kind: "delete", subject, onConfirm: () => busyBlocksStore.remove(block.id) });
+       if (!done) return;
++      markBusyBlocksChanged();
+       announce(t().growth.busyBlocksPage.week.deleted);
+       // The delete button is gone: put focus on the day's heading (looked up now: the view may have been rebuilt).
+       document.querySelector<HTMLElement>(`[data-focus-key="busy-day-${block.date}"]`)?.focus();
+@@ -236,17 +252,25 @@
+     else if (attached) return dispose(); // the view was replaced without a re-render of this one
+     drawWeek();
+   });
++  const stopNext = subscribeBusyChange(() => {
++    if (container.isConnected) attached = true;
++    else if (attached) return dispose();
++    drawNext();
++  });
+   function dispose(): void {
+     stop();
++    stopNext();
+     if (liveRegion === live) liveRegion = null;
+   }
+   disposeActive = dispose;
+ 
+   drawWeek();
++  drawNext();
+   container.append(
+     el("p", { class: "lead" }, [c.intro]),
+     form,
+     live,
++    nextSlot,
+     el("section", { class: "busy__week", "aria-labelledby": "busy-week-title" }, [
+       el("h2", { class: "busy__heading", id: "busy-week-title" }, [c.week.title]),
+       el("div", { class: "busy__bar" }, [toolbar, rangeEl]),
+--- a/frontend/src/views/next-action-now.ts
++++ b/frontend/src/views/next-action-now.ts
+@@ -1,6 +1,7 @@
+ import type { NextActionNowOut } from "../api/types";
+ import { el, errorMessage } from "../lib/dom";
+ import { errorBanner } from "../lib/page";
++import { journeyNextStep } from "../lib/journey-next-step";
+ import { t } from "../lib/theme-i18n";
+ import { asyncPanel, submitLock } from "../lib/ui";
+ import type { EmptyStateOptions, SubmitLock } from "../lib/ui";
+@@ -154,7 +155,14 @@
+ 
+     const kind = nowEmptyKind(s);
+     if (kind) {
+-      container.replaceChildren(asyncPanel({ id: "now", status: "ready", isEmpty: true, empty: emptyGuide(kind, s), label: p.nowCardLabel, render: () => el("span") }));
++      // Part 20c: nothing left to suggest -> a path to planning more, beside the guide's own buttons (Check again /
++      // Start over / Back stay). `planningNone: false`: this card just found nothing to do, so the planning page
++      // is the useful place whatever the decompose result said earlier. Reads stores only, sends nothing.
++      const toPlan = journeyNextStep({ stepId: "whatNow", facts: { planningNone: false }, className: "now-card__plan" });
++      container.replaceChildren(
++        asyncPanel({ id: "now", status: "ready", isEmpty: true, empty: emptyGuide(kind, s), label: p.nowCardLabel, render: () => el("span") }),
++        ...(toPlan ? [toPlan] : [])
++      );
+       return;
+     }
+ 
+--- a/frontend/src/views/plan-proposal.ts
++++ b/frontend/src/views/plan-proposal.ts
+@@ -1,5 +1,6 @@
+ import { handleAuthExpiry } from "../lib/auth-guard";
+ import { el, errorMessage } from "../lib/dom";
++import { journeyNextStep } from "../lib/journey-next-step";
+ import { errorBanner } from "../lib/page";
+ import { getLocale, t } from "../lib/theme-i18n";
+ import { asyncPanel, confidenceBadge, emptyStateGuide, formField, reviewAndConfirm, submitLock } from "../lib/ui";
+@@ -370,9 +371,32 @@
+   // ---- 13c HOOK (success): the saved plan. Called on every draw. `s.confirmStatus === "success"`; `s.confirmResult` is the
+   // backend's answer ({ saved, log_date }), `s.confirmedBody` the exact body that was sent. The daily plan is already marked stale
+   // (invalidateDailyPlan() ran in requestPlanConfirm) and the panel above is read-only with the saved values. Part 13b leaves it empty.
++  /** Part 20c: what the success box was last built from (the body that was saved), so a redraw that changes nothing
++   * does not replace the buttons under the user's keyboard. Null = nothing is shown. */
++  let successShownFor: unknown = null;
+   function drawConfirmSuccess(slot: HTMLElement, s: PlanProposalSlice): void {
+     slot.dataset.confirmStatus = s.confirmStatus;
+-    // 13c: slot.replaceChildren(...) goes here.
++    if (!(s.confirmStatus === "success" && s.confirmedBody !== null)) {
++      successShownFor = null;
++      slot.replaceChildren();
++      return;
++    }
++    if (successShownFor === s.confirmedBody && slot.childElementCount > 0) return;
++    const justSaved = successShownFor === null && slot.childElementCount === 0;
++    successShownFor = s.confirmedBody;
++    const n = c.next;
++    const message = el("div", { class: "plan-confirm__success-message", role: "status", tabindex: "-1", "data-plan-confirm-success-message": "" }, [
++      el("strong", {}, [n.success.title]),
++      el("span", {}, [n.success.detail]),
++    ]);
++    // The daily plan is already stale (requestPlanConfirm), so Today fetches by itself: the CTA only navigates.
++    const toToday = journeyNextStep({ stepId: "planProposal", labels: { dailyPlan: n.success.today } });
++    toToday?.querySelector("button")?.setAttribute("data-plan-confirm-today", "");
++    const again = el("button", { class: "btn-secondary", type: "button", "data-plan-confirm-again": "" }, [n.success.again]);
++    again.addEventListener("click", nav.onRestart);
++    slot.replaceChildren(el("div", { class: "plan-confirm__success", "data-plan-confirm-success": "" }, [message, el("div", { class: "form-actions" }, [...(toToday ? [toToday] : []), again])]));
++    // The Confirm row is gone: put the keyboard on the message. Not on a plain rebuild (language switch).
++    if (justSaved) message.focus({ preventScroll: true });
+   }
+ 
+   function drawPart13(s: PlanProposalSlice): void {
+@@ -423,7 +447,7 @@
+ 
+     part13.replaceChildren(
+       el("section", { class: "plan-proposal__next", "aria-labelledby": "plan-part13-title" }, [
+-        el("h2", { class: "plan-proposal__next-title", id: "plan-part13-title" }, [n.title]),
++        el("h2", { class: "plan-proposal__next-title", id: "plan-part13-title" }, [saved ? n.savedSectionTitle : n.title]),
+         ...(saved ? [] : [el("p", {}, [n.description])]),
+         ...(choices.length === 0 && !saved ? [el("p", { class: "field-hint", "data-plan-override-none": "true" }, [o.noOthers])] : []),
+         ...(actions.length > 0 ? [el("div", { class: "form-actions" }, actions)] : []),
+@@ -441,6 +465,8 @@
+   function draw(): void {
+     const s = planProposal.get();
+     const hasPlan = s.activeResult !== null;
++    // Once saved, the intro must not say "nothing is saved" any more.
++    intro.textContent = s.confirmStatus === "success" && s.confirmedBody !== null ? c.next.introSaved : c.intro;
+     const noCandidates = buildProposeRequest(planInterview.get()) === null && !hasPlan;
+     drawSummary();
+ 

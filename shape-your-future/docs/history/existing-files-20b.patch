@@ -1,0 +1,723 @@
+--- /tmp/claude-0/-home-claude/054260c6-8536-54e7-aad7-d3f2b2e30eeb/scratchpad/orig/frontend/smoke/journey-map.test.ts	2026-10-06 14:10:15.927159948 +0330
++++ ./frontend/smoke/journey-map.test.ts	2026-10-06 14:20:05.468053236 +0330
+@@ -30,13 +30,15 @@
+ }
+ 
+ describe("journey map: shape", () => {
+-  it("lists the 13 steps of the journey, in order", () => {
++  it("lists the 15 steps of the journey, in order (Part 20b added goals and goalTree)", () => {
+     expect(ids(JOURNEY_STEPS)).toEqual([
+       "signUp",
+       "activeHours",
+       "brainDump",
+       "createGoal",
++      "goals",
+       "decompose",
++      "goalTree",
+       "planning",
+       "dailyPlan",
+       "whatNow",
+@@ -112,6 +114,8 @@
+       return t?.kind === "route" ? t.routeId : undefined;
+     };
+     expect(route("brainDump")).toBe("plan/brain-dump");
++    expect(route("activeHours")).toBe("profile/smart-profile"); // Part 20b: the Profile tab of My profile (Part 17b), not the legacy page
++    expect(route("goals")).toBe("goals/list");
+     expect(route("planning")).toBe("plan/planning-required");
+     expect(route("progressCheck")).toBe("reflect/progress-check");
+     expect(route("weeklyGrowth")).toBe("reflect/weekly-growth");
+@@ -120,7 +124,7 @@
+       const t = resolveStepTarget(getStep(id)!);
+       return t?.kind === "step" ? t.step : undefined;
+     };
+-    expect(legacy("activeHours")).toBe("CONTEXT_SETUP");
++    expect(legacy("goalTree")).toBe("GOAL_WORKSPACE");
+     expect(legacy("createGoal")).toBe("GOAL_CREATION");
+     expect(legacy("decompose")).toBe("DECOMPOSITION");
+     expect(legacy("dailyPlan")).toBe("DAILY_PLAN");
+@@ -187,9 +191,9 @@
+   });
+ 
+   it("getAvailableNextSteps drops guarded, unresolvable and current-view steps, and keeps the order", () => {
+-    // decompose follows both branches, but needs a goal
+-    expect(ids(getAvailableNextSteps("brainDump", ctx()))).toEqual([]);
+-    expect(ids(getAvailableNextSteps("createGoal", ctx()))).toEqual([]);
++    // decompose follows both branches, but needs a goal: Part 20b sends the user to the Goals list instead of dropping the button
++    expect(ids(getAvailableNextSteps("brainDump", ctx()))).toEqual(["goals"]);
++    expect(ids(getAvailableNextSteps("createGoal", ctx()))).toEqual(["goals"]);
+     expect(ids(getAvailableNextSteps("createGoal", ctx({ goal: GOAL, step: "GOAL_CREATION" })))).toEqual(["decompose"]);
+     // alternatives keep their order; the one the user is on is dropped
+     expect(ids(getAvailableNextSteps("activeHours", ctx({ step: "CONTEXT_SETUP" })))).toEqual(["brainDump", "createGoal"]);
+--- /tmp/claude-0/-home-claude/054260c6-8536-54e7-aad7-d3f2b2e30eeb/scratchpad/orig/frontend/smoke/journey-next-step.test.ts	2026-10-06 14:10:15.931135724 +0330
++++ ./frontend/smoke/journey-next-step.test.ts	2026-10-06 14:20:10.329782803 +0330
+@@ -65,8 +65,11 @@
+   it("returns null when nothing can honestly be offered (guard not met, unknown step, already on the target)", async () => {
+     const { journey, journeyNextStep } = await load();
+     journey.goTo("GOAL_CREATION");
+-    expect(journeyNextStep({ stepId: "createGoal" })).toBeNull(); // decompose needs a goal
+-    expect(journeyNextStep({ stepId: "brainDump" })).toBeNull();
++    // decompose needs a goal: Part 20b offers the Goals list in its place (so a button is still there)
++    expect(journeyNextStep({ stepId: "createGoal" })!.querySelector("button")!.getAttribute("data-journey-to")).toBe("goals");
++    journey.goToRoute("goals/list");
++    expect(journeyNextStep({ stepId: "brainDump" })).toBeNull(); // ...unless the user is already on that list
++    journey.goTo("GOAL_CREATION");
+     expect(journeyNextStep({ stepId: "nope" as never })).toBeNull();
+     journey.goTo("DAILY_PLAN");
+     expect(journeyNextStep({ stepId: "dailyPlan" })).toBeNull(); // "what now" is a card on this very page
+@@ -168,7 +171,7 @@
+     for (const a of actions) expect(typeof (a as { onClick: () => void }).onClick).toBe("function");
+     (actions[1] as { onClick: () => void }).onClick();
+     expect(journey.get().step).toBe("GOAL_CREATION");
+-    expect(journeyNextActions("brainDump")).toEqual([]); // no goal
++    expect(journeyNextActions("brainDump").map((a) => a.label)).toEqual(["Go to my goals"]); // no goal: Part 20b leads to Goals
+   });
+ 
+   it("the component never moves focus itself and never writes a route id", () => {
+--- /tmp/claude-0/-home-claude/054260c6-8536-54e7-aad7-d3f2b2e30eeb/scratchpad/orig/frontend/src/growth-os/i18n/en.ts	2026-10-06 14:10:15.926451227 +0330
++++ ./frontend/src/growth-os/i18n/en.ts	2026-10-06 14:14:28.856511217 +0330
+@@ -36,7 +36,9 @@
+       activeHours: "Active hours",
+       brainDump: "Brain Dump",
+       createGoal: "Create a goal",
++      goals: "My goals",
+       decompose: "Break the goal down",
++      goalTree: "Goal tree",
+       planning: "Plan the next actions",
+       dailyPlan: "Today's plan",
+       whatNow: "What should I do now?",
+@@ -51,7 +53,9 @@
+       activeHours: "Set my active hours",
+       brainDump: "Start a Brain Dump",
+       createGoal: "Create a goal",
++      goals: "Go to my goals",
+       decompose: "Break my goal into steps",
++      goalTree: "See my goal's tree",
+       planning: "Plan my next actions",
+       dailyPlan: "Open today's plan",
+       whatNow: "Ask what to do now",
+@@ -61,6 +65,14 @@
+       weeklyGrowth: "See my weekly growth",
+       behaviorPatterns: "See my behavior patterns",
+     } as Record<JourneyStepId, string>,
++    // Part 20b: the line above a group of next-step buttons, where the screen has no text of its own to lead into them.
++    lead: {
++      newAccount: "Welcome! Start by telling me when you are free, so your plan fits your day.",
++      returning: "Welcome back. Where would you like to start?",
++      hoursSaved: "Active hours saved. Where would you like to start?",
++      altBrainDump: "Not sure where to begin? Empty your head first, and sort it into a plan later.",
++      planningLater: "You can plan the rest later. Today's plan is one click away.",
++    },
+   },
+   profile: {
+     loading: "Loading your profile…",
+--- /tmp/claude-0/-home-claude/054260c6-8536-54e7-aad7-d3f2b2e30eeb/scratchpad/orig/frontend/src/growth-os/i18n/fa.ts	2026-10-06 14:10:15.926327452 +0330
++++ ./frontend/src/growth-os/i18n/fa.ts	2026-10-06 14:14:28.863176380 +0330
+@@ -35,7 +35,9 @@
+       activeHours: "ساعت‌های فعال",
+       brainDump: "تخلیه ذهن",
+       createGoal: "ساختن هدف",
++      goals: "هدف‌های من",
+       decompose: "تجزیه‌ی هدف",
++      goalTree: "درخت هدف",
+       planning: "برنامه‌ریزی گام‌های بعدی",
+       dailyPlan: "برنامه‌ی امروز",
+       whatNow: "الان چه کاری بکنم؟",
+@@ -50,7 +52,9 @@
+       activeHours: "ساعت‌های فعالم را تنظیم کن",
+       brainDump: "شروع تخلیه ذهن",
+       createGoal: "ساختن یک هدف",
++      goals: "رفتن به هدف‌هایم",
+       decompose: "هدفم را به گام‌ها تقسیم کن",
++      goalTree: "دیدن درخت هدفم",
+       planning: "گام‌های بعدی را برنامه‌ریزی کن",
+       dailyPlan: "باز کردن برنامه‌ی امروز",
+       whatNow: "بپرس الان چه کار کنم",
+@@ -60,6 +64,13 @@
+       weeklyGrowth: "دیدن رشد هفتگی‌ام",
+       behaviorPatterns: "دیدن الگوهای رفتاری‌ام",
+     },
++    lead: {
++      newAccount: "خوش آمدی! اول بگو چه ساعت‌هایی وقت داری تا برنامه‌ات با روز تو جور شود.",
++      returning: "دوباره خوش آمدی. از کجا شروع کنیم؟",
++      hoursSaved: "ساعت‌های فعال ذخیره شد. از کجا شروع کنیم؟",
++      altBrainDump: "نمی‌دانی از کجا شروع کنی؟ اول ذهنت را خالی کن و بعداً آن را به برنامه تبدیل کن.",
++      planningLater: "بقیه را می‌توانی بعداً برنامه‌ریزی کنی. برنامه‌ی امروز یک کلیک آن‌طرف‌تر است.",
++    },
+   },
+   profile: {
+     loading: "در حال بارگذاری پروفایل…",
+--- /tmp/claude-0/-home-claude/054260c6-8536-54e7-aad7-d3f2b2e30eeb/scratchpad/orig/frontend/src/lib/journey-next-step.ts	2026-10-06 14:10:15.923717970 +0330
++++ ./frontend/src/lib/journey-next-step.ts	2026-10-06 14:27:57.705128892 +0330
+@@ -4,8 +4,10 @@
+ import { BEHAVIOR_ROUTE } from "../state/behavior";
+ import { openBehaviorTab } from "../state/behavior-flow";
+ import { journey } from "../state/journey";
++import { readJourneyFacts } from "../state/journey-facts";
+ import { getAvailableNextSteps, isStepAvailable, resolveStepTarget } from "../state/journey-map";
+-import type { JourneyContext, JourneyStep, JourneyStepId } from "../state/journey-map";
++import type { JourneyContext, JourneyFacts, JourneyStep, JourneyStepId } from "../state/journey-map";
++import { myProfileStore } from "../state/my-profile";
+ 
+ /**
+  * Part 20a: JourneyNextStep. "Where do I go from here?" as one primary button (or a small group when the journey
+@@ -38,10 +40,23 @@
+   stepId: JourneyStepId;
+   /** What guards and "already here" are checked against. Default: the live store. Pass it only in tests. */
+   state?: JourneyContext;
++  /** What the screen itself knows about the user's progress (e.g. the decompose result it is showing). Wins over what is
++   * read from the stores (state/journey-facts.ts). Never causes a request. */
++  facts?: JourneyFacts;
+   /** Called after a button navigated (it is not called when the click was refused). Optional; navigation itself never needs it. */
+   onNavigate?: (to: JourneyStepId) => void;
+   /** Extra class name(s) for the wrapper. */
+   className?: string;
++  /** Every button secondary (no primary): for a screen whose own buttons are the main action (Part 20b: the planning list). */
++  quiet?: boolean;
++}
++
++/** The context the buttons are decided from: the live store plus the facts read from the stores, then the caller's own
++ * facts on top. `state` (tests only) is used as given, with the caller's facts on top. Reads only, sends nothing. */
++function contextFor(state: JourneyContext | undefined, facts: JourneyFacts | undefined): JourneyContext {
++  if (state) return facts ? { ...state, facts: { ...state.facts, ...facts } } : state;
++  const live = journey.get();
++  return { step: live.step, sectionRoute: live.sectionRoute, goal: live.goal, focusTask: live.focusTask, focusSession: live.focusSession, facts: { ...readJourneyFacts(), ...facts } };
+ }
+ 
+ /** Opens a step through the existing router. Returns false (and does nothing) when the step cannot be opened right now:
+@@ -52,24 +67,28 @@
+   if (!target || !isStepAvailable(step, journey.get())) return false;
+   if (target.kind === "step") journey.goTo(target.step);
+   else if (step.tab !== undefined && target.routeId === BEHAVIOR_ROUTE) openBehaviorTab(step.tab);
+-  else journey.goToRoute(target.routeId);
++  else {
++    // "My profile" remembers its open tab in myProfileStore; setting it first makes the page open on that tab.
++    if (step.myProfileTab !== undefined) myProfileStore.setActiveTab(step.myProfileTab);
++    journey.goToRoute(target.routeId);
++  }
+   return true;
+ }
+ 
+ /** `{ label, onClick }` pairs for the same steps, for the places that take an action object instead of a node
+  * (emptyStateGuide's `action` / `secondaryAction` / `extraActions`). Same filtering and navigation as journeyNextStep. */
+-export function journeyNextActions(stepId: JourneyStepId, state?: JourneyContext): EmptyStateAction[] {
++export function journeyNextActions(stepId: JourneyStepId, state?: JourneyContext, facts?: JourneyFacts): EmptyStateAction[] {
+   const cta = t().growth.journey.cta;
+-  return getAvailableNextSteps(stepId, state ?? journey.get()).map((step) => ({ label: cta[step.labelKey], onClick: () => void goToJourneyStep(step) }));
++  return getAvailableNextSteps(stepId, contextFor(state, facts)).map((step) => ({ label: cta[step.labelKey], onClick: () => void goToJourneyStep(step) }));
+ }
+ 
+ export function journeyNextStep(props: JourneyNextStepProps): HTMLElement | null {
+-  const next = getAvailableNextSteps(props.stepId, props.state ?? journey.get());
++  const next = getAvailableNextSteps(props.stepId, contextFor(props.state, props.facts));
+   if (next.length === 0) return null;
+ 
+   const j = t().growth.journey;
+   const buttons = next.map((step, index) => {
+-    const button = el("button", { class: `${index === 0 ? "btn-primary" : "btn-secondary"} journey-next__cta`, type: "button", "data-journey-to": step.id }, [j.cta[step.labelKey]]);
++    const button = el("button", { class: `${index === 0 && !props.quiet ? "btn-primary" : "btn-secondary"} journey-next__cta`, type: "button", "data-journey-to": step.id }, [j.cta[step.labelKey]]);
+     button.addEventListener("click", () => {
+       if (goToJourneyStep(step)) props.onNavigate?.(step.id);
+     });
+--- /tmp/claude-0/-home-claude/054260c6-8536-54e7-aad7-d3f2b2e30eeb/scratchpad/orig/frontend/src/state/journey-map.ts	2026-10-06 14:10:15.925311058 +0330
++++ ./frontend/src/state/journey-map.ts	2026-10-06 14:26:49.124070972 +0330
+@@ -29,7 +29,9 @@
+   | "activeHours"
+   | "brainDump"
+   | "createGoal"
++  | "goals"
+   | "decompose"
++  | "goalTree"
+   | "planning"
+   | "dailyPlan"
+   | "whatNow"
+@@ -49,6 +51,23 @@
+   | "focusSession" // a focus session was started (FOCUS_EXECUTION reads it)
+   | "finishedFocusSession"; // ...and it is finished (FOCUS_FEEDBACK is offered after Finish)
+ 
++/** What the app already knows about the user's progress, as plain booleans. A fact is only ever set when it is KNOWN
++ * (`true` or `false`); a missing key means "unknown", and unknown never changes what a button says. Read from the
++ * stores by state/journey-facts.ts (no request), or passed by a screen that has the answer in hand. */
++export type JourneyFactKey =
++  | "activeHoursSet" // the profile has at least one active-hours window
++  | "goalDecomposed" // the goal in the journey already has a tree (this session saw it)
++  | "planningNone"; // no NextAction needs planning details any more
++export type JourneyFacts = Partial<Record<JourneyFactKey, boolean>>;
++
++/** "This step is already done": a button never leads to it. */
++export interface JourneySatisfied {
++  readonly fact: JourneyFactKey;
++  /** Omitted: skip the step and offer ITS next steps instead (active hours already set -> Brain Dump / create a goal).
++   * Given: offer this other step instead (goal already decomposed -> its tree). */
++  readonly then?: JourneyStepId;
++}
++
+ export interface JourneyStep {
+   readonly id: JourneyStepId;
+   /** Where this step lives: a RouteKey (registry sub-route) or a legacy Step. Resolved by `resolveTarget`. */
+@@ -62,16 +81,44 @@
+   readonly requires?: JourneyRequirement;
+   /** Only for the Behavior page: open it on this tab (done through openBehaviorTab, the existing way to do it). */
+   readonly tab?: BehaviorTabId;
++  /** Only for the "My profile" page: open it on this tab (done through myProfileStore, which that page already reads). */
++  readonly myProfileTab?: string;
++  /** Part 20b: the step is already done when this fact is true (see JourneySatisfied). */
++  readonly satisfiedWhen?: JourneySatisfied;
++  /** Part 20b: when the entry guard (`requires`) is not met, offer this step instead of dropping the button
++   * (Brain Dump creates no goal, so "break the goal down" becomes "go to your goals"). */
++  readonly unavailableInstead?: JourneyStepId;
+ }
+ 
+ /** In journey order. Brain Dump and create goal are alternatives (both follow active hours, both lead to decompose). */
+ export const JOURNEY_STEPS: readonly JourneyStep[] = [
+   { id: "signUp", routeKey: "AUTH", labelKey: "signUp", nextStepIds: ["activeHours"] },
+-  { id: "activeHours", routeKey: "CONTEXT_SETUP", labelKey: "activeHours", nextStepIds: ["brainDump", "createGoal"] },
++  // Part 20b: the active-hours editor is the Profile tab of "My profile" (Part 17b). Already set -> that step is skipped.
++  {
++    id: "activeHours",
++    routeKey: "smartProfile",
++    myProfileTab: "profile",
++    labelKey: "activeHours",
++    nextStepIds: ["brainDump", "createGoal"],
++    satisfiedWhen: { fact: "activeHoursSet" },
++  },
++  // Brain Dump creates no goal: with no goal in the journey the button goes to the Goals list instead (see `goals`).
+   { id: "brainDump", routeKey: "brainDump", labelKey: "brainDump", nextStepIds: ["decompose"] },
+   { id: "createGoal", routeKey: "GOAL_CREATION", labelKey: "createGoal", nextStepIds: ["decompose"] },
+-  { id: "decompose", routeKey: "DECOMPOSITION", labelKey: "decompose", nextStepIds: ["planning"], requires: "goal" },
+-  { id: "planning", routeKey: "planningRequired", labelKey: "planning", nextStepIds: ["dailyPlan"] },
++  { id: "goals", routeKey: "goalsList", labelKey: "goals", nextStepIds: ["createGoal"] },
++  {
++    id: "decompose",
++    routeKey: "DECOMPOSITION",
++    labelKey: "decompose",
++    nextStepIds: ["planning"],
++    requires: "goal",
++    unavailableInstead: "goals",
++    satisfiedWhen: { fact: "goalDecomposed", then: "goalTree" },
++  },
++  // The goal's tree (the workspace screen). Only reached from `decompose` when the goal already has one.
++  { id: "goalTree", routeKey: "GOAL_WORKSPACE", labelKey: "goalTree", nextStepIds: ["planning"], requires: "goal" },
++  // Nothing left to plan -> the step is skipped and the button goes to the daily plan.
++  { id: "planning", routeKey: "planningRequired", labelKey: "planning", nextStepIds: ["dailyPlan"], satisfiedWhen: { fact: "planningNone" } },
+   { id: "dailyPlan", routeKey: "DAILY_PLAN", labelKey: "dailyPlan", nextStepIds: ["whatNow"] },
+   // "What should I do now?" is a card INSIDE the daily plan page (views/next-action-now.ts), not a screen of its own.
+   { id: "whatNow", routeKey: "DAILY_PLAN", labelKey: "whatNow", nextStepIds: ["focus"] },
+@@ -152,7 +199,10 @@
+ // ---------------- Availability ----------------
+ 
+ /** The slice of the store these checks read (JourneyState has more; tests pass just this). */
+-export type JourneyContext = Pick<JourneyState, "step" | "sectionRoute" | "goal" | "focusTask" | "focusSession">;
++export type JourneyContext = Pick<JourneyState, "step" | "sectionRoute" | "goal" | "focusTask" | "focusSession"> & {
++  /** What is known about the user's progress (state/journey-facts.ts). Optional: without it nothing is skipped. */
++  readonly facts?: JourneyFacts;
++};
+ 
+ /** True when the guard of `step` (if it has one) is satisfied by `ctx`. */
+ export function isStepAvailable(step: JourneyStep, ctx: JourneyContext): boolean {
+@@ -174,13 +224,45 @@
+   return target.kind === "step" ? ctx.step === target.step : ctx.step === "SECTION_VIEW" && ctx.sectionRoute === target.routeId;
+ }
+ 
+-/** `getNextSteps` minus everything a button cannot honestly lead to right now: a target the registry does not
+- * know, a step whose guard is not satisfied, and the screen the user is already on. Order is kept. */
++/** One step as a button target, after the "already done" and "cannot be entered" rules of the map:
++ *  - `satisfiedWhen` true, no `then`: the step is skipped, its own next steps are offered in its place;
++ *  - `satisfiedWhen` true with `then`: that other step is offered instead;
++ *  - guard not met and `unavailableInstead`: that other step is offered instead.
++ * `path` stops a loop in a (mis)configured map. Pure. */
++function expandStep(step: JourneyStep, ctx: JourneyContext, path: ReadonlySet<string>): JourneyStep[] {
++  if (path.has(step.id)) return [];
++  const here = new Set(path).add(step.id);
++  const via = (id: JourneyStepId): JourneyStep[] => {
++    const to = BY_ID.get(id);
++    return to ? expandStep(to, ctx, here) : [];
++  };
++  const done = step.satisfiedWhen;
++  if (done && ctx.facts?.[done.fact] === true) {
++    if (done.then === undefined) return step.nextStepIds.flatMap(via);
++    // The replacement must be enterable itself ("its tree" needs a goal); if it is not, carry on as if the fact were unknown.
++    const to = BY_ID.get(done.then);
++    if (to && isStepAvailable(to, ctx)) return expandStep(to, ctx, here);
++  }
++  if (step.unavailableInstead !== undefined && !isStepAvailable(step, ctx)) return via(step.unavailableInstead);
++  return [step];
++}
++
++/** `getNextSteps` with the map's rules applied (see expandStep), minus everything a button cannot honestly lead to
++ * right now: a target the registry does not know, a step whose guard is not satisfied, and the screen the user is
++ * already on. Order is kept, each step once. */
+ export function getAvailableNextSteps(stepId: string, ctx: JourneyContext): readonly JourneyStep[] {
+-  return getNextSteps(stepId).filter((next) => {
+-    const target = resolveStepTarget(next);
+-    return target !== null && isStepAvailable(next, ctx) && !isCurrentView(target, ctx);
+-  });
++  const seen = new Set<string>();
++  const out: JourneyStep[] = [];
++  for (const next of getNextSteps(stepId)) {
++    for (const step of expandStep(next, ctx, new Set([stepId]))) {
++      if (seen.has(step.id)) continue;
++      const target = resolveStepTarget(step);
++      if (target === null || !isStepAvailable(step, ctx) || isCurrentView(target, ctx)) continue;
++      seen.add(step.id);
++      out.push(step);
++    }
++  }
++  return out;
+ }
+ 
+ // ---------------- Self-check ----------------
+@@ -198,18 +280,26 @@
+     if (s.labelKey !== s.id) problems.push(`"${s.id}": labelKey "${s.labelKey}" is not its id`);
+     if (resolveTarget(s.routeKey) === null) problems.push(`"${s.id}": routeKey "${s.routeKey}" is not in the registry or the Step list`);
+     if (s.tab !== undefined && s.routeKey !== "behavior") problems.push(`"${s.id}": tab is only meaningful on the Behavior page`);
++    if (s.myProfileTab !== undefined && s.routeKey !== "smartProfile") problems.push(`"${s.id}": myProfileTab is only meaningful on the My profile page`);
+     if (new Set(s.nextStepIds).size !== s.nextStepIds.length) problems.push(`"${s.id}": nextStepIds repeats an id`);
+     for (const next of s.nextStepIds) {
+       if (!ids.has(next)) problems.push(`"${s.id}": next step "${next}" does not exist`);
+       if (next === s.id) problems.push(`"${s.id}": links to itself`);
+     }
++    for (const other of [s.satisfiedWhen?.then, s.unavailableInstead]) {
++      if (other === undefined) continue;
++      if (!ids.has(other)) problems.push(`"${s.id}": replacement step "${other}" does not exist`);
++      if (other === s.id) problems.push(`"${s.id}": replaces itself`);
++    }
+   }
+   const first = steps[0];
+   if (first) {
+     const seen = new Set<string>([first.id]);
+     const queue = [first.id];
+     for (let id = queue.shift(); id !== undefined; id = queue.shift()) {
+-      for (const next of steps.find((s) => s.id === id)?.nextStepIds ?? []) {
++      const from = steps.find((s) => s.id === id);
++      const edges = [...(from?.nextStepIds ?? []), ...(from?.satisfiedWhen?.then ? [from.satisfiedWhen.then] : []), ...(from?.unavailableInstead ? [from.unavailableInstead] : [])];
++      for (const next of edges) {
+         if (!seen.has(next)) {
+           seen.add(next);
+           queue.push(next);
+--- /tmp/claude-0/-home-claude/054260c6-8536-54e7-aad7-d3f2b2e30eeb/scratchpad/orig/frontend/src/state/ui-profile-save-flow.ts	2026-10-06 14:10:15.925828168 +0330
++++ ./frontend/src/state/ui-profile-save-flow.ts	2026-10-06 14:27:26.074086278 +0330
+@@ -41,11 +41,12 @@
+   const answer = await apiClient.updateUserProfile(plan.body);
+ 
+   // The server has accepted it by now: the plan depends on the hours whatever the answer looks like.
+-  if (Object.prototype.hasOwnProperty.call(plan.body, "active_hours")) invalidateDailyPlan();
++  const savedHours = Object.prototype.hasOwnProperty.call(plan.body, "active_hours");
++  if (savedHours) invalidateDailyPlan();
+   if (!isRecord(answer)) throw { kind: "unknown", status: null, message: "" };
+   if (userIntelligenceStore.generation("uiProfile") !== started) return answer;
+ 
+-  setUiProfileSaved(); // before the store changes: the redraw it causes reads it
++  setUiProfileSaved(savedHours); // before the store changes: the redraw it causes reads it
+   const current = userIntelligenceStore.getSlice("uiProfile");
+   const rebased = current.draft ? rebaseDraftAfterSave(sent, current.draft, answer) : null;
+   if (rebased?.kept) {
+--- /tmp/claude-0/-home-claude/054260c6-8536-54e7-aad7-d3f2b2e30eeb/scratchpad/orig/frontend/src/state/ui-profile-save.ts	2026-10-06 14:10:15.924902632 +0330
++++ ./frontend/src/state/ui-profile-save.ts	2026-10-06 14:14:55.971220460 +0330
+@@ -88,7 +88,7 @@
+ /** "saved" / "discarded": a status line. "error": the ApiError of the last failed save (read `.kind`, `.status`). */
+ export type UiProfileSaveFeedback =
+   | { phase: "idle" }
+-  | { phase: "saved" | "discarded"; fresh: boolean }
++  | { phase: "saved" | "discarded"; fresh: boolean; /** Part 20b: the save sent `active_hours` (only ever present as `true`). */ hours?: true }
+   | { phase: "error"; error: ApiError };
+ 
+ const IDLE: UiProfileSaveFeedback = Object.freeze({ phase: "idle" as const });
+@@ -97,8 +97,9 @@
+ export function getUiProfileSaveFeedback(): UiProfileSaveFeedback {
+   return feedback;
+ }
+-export function setUiProfileSaved(): void {
+-  feedback = { phase: "saved", fresh: true };
++/** `withHours`: this save sent `active_hours` (Part 20b: the Save area then offers the next-step buttons). */
++export function setUiProfileSaved(withHours = false): void {
++  feedback = withHours ? { phase: "saved", fresh: true, hours: true } : { phase: "saved", fresh: true };
+ }
+ export function setUiProfileDiscarded(): void {
+   feedback = { phase: "discarded", fresh: true };
+@@ -113,7 +114,7 @@
+ /** True once for a status line that was just produced (the view moves focus to it); afterwards false. */
+ export function takeFreshUiProfileFeedback(): boolean {
+   if ((feedback.phase === "saved" || feedback.phase === "discarded") && feedback.fresh) {
+-    feedback = { phase: feedback.phase, fresh: false };
++    feedback = feedback.hours ? { phase: feedback.phase, fresh: false, hours: true } : { phase: feedback.phase, fresh: false };
+     return true;
+   }
+   return false;
+--- /tmp/claude-0/-home-claude/054260c6-8536-54e7-aad7-d3f2b2e30eeb/scratchpad/orig/frontend/src/styles/components.css	2026-10-06 14:10:15.922123837 +0330
++++ ./frontend/src/styles/components.css	2026-10-06 14:14:55.955240995 +0330
+@@ -283,3 +283,10 @@
+ /* ---- Part 20a: journeyNextStep (lib/journey-next-step.ts). Tokens only, logical properties only. ---- */
+ .journey-next { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); margin-block-start: var(--space-4); min-width: 0; max-inline-size: 100%; }
+ .journey-next__cta { min-block-size: var(--size-touch); max-inline-size: 100%; overflow-wrap: anywhere; }
++
++/* ---- Part 20b: a line that leads into a journeyNextStep group (and the first-visit block in the chat dock). ---- */
++.journey-lead { margin: 0; margin-block-start: var(--space-4); color: var(--color-text-muted); overflow-wrap: anywhere; }
++.journey-lead + .journey-next { margin-block-start: var(--space-2); }
++.journey-welcome { margin-inline: var(--space-4); padding: var(--space-3) var(--space-4); background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-md); min-width: 0; }
++.journey-welcome__lead { margin: 0; color: var(--color-text); overflow-wrap: anywhere; }
++.journey-welcome .journey-next { margin-block-start: var(--space-2); }
+--- /tmp/claude-0/-home-claude/054260c6-8536-54e7-aad7-d3f2b2e30eeb/scratchpad/orig/frontend/src/views/auth.ts	2026-10-06 14:10:15.920864458 +0330
++++ ./frontend/src/views/auth.ts	2026-10-06 14:25:34.195394737 +0330
+@@ -6,6 +6,7 @@
+ import type { Rule } from "../lib/password-ui";
+ import { t } from "../lib/theme-i18n";
+ import { journey } from "../state/journey";
++import { markWelcome } from "../state/journey-welcome";
+ 
+ type Mode = "login" | "register";
+ 
+@@ -128,6 +129,7 @@
+       authStorage.setToken(token.access_token);
+       draft.password = "";
+       draft.confirm = "";
++      markWelcome(isRegister ? "register" : "login"); // Part 20b: the chat shows the first next-step buttons
+       journey.goTo("CHAT");
+     } catch (err) {
+       // Update only the error slot: inputs, focus and hints stay intact.
+--- /tmp/claude-0/-home-claude/054260c6-8536-54e7-aad7-d3f2b2e30eeb/scratchpad/orig/frontend/src/views/brain-dump.ts	2026-10-06 14:10:15.921261309 +0330
++++ ./frontend/src/views/brain-dump.ts	2026-10-06 14:25:41.340863731 +0330
+@@ -8,6 +8,7 @@
+ import { SCORE_MAX, SCORE_MIN } from "../state/brain-dump-items";
+ import { todayIso } from "../state/busy-blocks";
+ import { journey } from "../state/journey";
++import { journeyNextStep } from "../lib/journey-next-step";
+ import { PLAN_CANDIDATES_MAX, PLAN_FLOW_ROUTE, candidateInputsOf, normalizePlanCandidates, setPlanCandidates, taskCandidatesOf } from "../state/plan-candidates";
+ import type { ItemEditErrors, ItemField, ItemPatch } from "../state/brain-dump-items";
+ import { normalizeDigits } from "../state/next-action-form";
+@@ -307,6 +308,12 @@
+   document.getElementById(`${FIELD_ID}-control`)?.focus();
+ }
+ 
++/** JourneyNextStep for a confirmed Brain Dump: Brain Dump creates no goal, so with none in the journey it leads to Goals. */
++function journeyNextNodes(): HTMLElement[] {
++  const next = journeyNextStep({ stepId: "brainDump" });
++  return next ? [next] : [];
++}
++
+ /** The confirmation after a save, with the two next steps. */
+ function successFeedback(s: BrainDumpState): HTMLElement {
+   const c = t().growth.brainDumpPage.result.confirm.success;
+@@ -329,6 +336,8 @@
+     title,
+     el("p", { class: "brain-success__message", id: msgId, dir: "auto" }, [c.message]),
+     el("div", { class: "brain-success__actions" }, [planBtn, newBtn]),
++    // Part 20b: the journey's next step (break the goal down, or Goals when there is no goal yet), beside the buttons above.
++    ...journeyNextNodes(),
+     el("p", { class: "brain-note", id: hintId, dir: "auto" }, [tasks.length > 0 ? c.planTodayHint(tasks.length, number(tasks.length)) : c.noTasks]),
+   ]);
+ }
+--- /tmp/claude-0/-home-claude/054260c6-8536-54e7-aad7-d3f2b2e30eeb/scratchpad/orig/frontend/src/views/chat.ts	2026-10-06 14:10:15.921123695 +0330
++++ ./frontend/src/views/chat.ts	2026-10-06 14:27:11.662501487 +0330
+@@ -7,6 +7,9 @@
+ import { LANG_META } from "../lib/locales";
+ import { setButtonLoading } from "../lib/page";
+ import { conversationGoalText, journey } from "../state/journey";
++import { readWelcomeFacts } from "../state/journey-facts";
++import { getWelcome } from "../state/journey-welcome";
++import { journeyNextStep } from "../lib/journey-next-step";
+ import { createInfoPanel, createStageLive, createStageMeta, createStageNote, resetChatStatus } from "./chat-status";
+ import type { ViewContext } from "./view-context";
+ 
+@@ -54,6 +57,21 @@
+   '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" ' +
+   'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="m5 12 7-7 7 7"/></svg>';
+ 
++/** The first-visit next-step block (JourneyNextStep for "signUp"), or null when the user did not just sign in or nothing
++ * can be offered. Reads the stores only: re-drawing it (a language change) sends nothing. */
++function welcomeNextSteps(context: ViewContext): HTMLElement | null {
++  const mode = getWelcome();
++  if (!mode) return null;
++  const facts = readWelcomeFacts(mode);
++  const buttons = journeyNextStep({ stepId: "signUp", facts });
++  if (!buttons) return null;
++  const lead = context.dict.growth.journey.lead;
++  return el("section", { class: "journey-welcome", "aria-label": context.dict.growth.journey.nextGroup }, [
++    el("p", { class: "journey-welcome__lead", dir: "auto" }, [facts.activeHoursSet ? lead.returning : lead.newAccount]),
++    buttons,
++  ]);
++}
++
+ export function renderChatView(container: HTMLElement, context: ViewContext): void {
+   disposeActive?.();
+   const freshMount = !chatMounted; // false on a language/theme re-render: no restore, no refetch
+@@ -106,7 +124,9 @@
+     journey.startNewConversation(); // drops id + derived state, keeps the unsent draft
+     input.focus(); // user-initiated (they pressed the button), so moving focus is fine
+   });
+-  const dock = el("div", { class: "chat-dock" }, [stageNote.node, chipsBox, composer]);
++  // Part 20b: right after sign-up / login, the first next-step buttons (active hours, or Brain Dump + create a goal).
++  const welcomeNext = welcomeNextSteps(context);
++  const dock = el("div", { class: "chat-dock" }, [...(welcomeNext ? [welcomeNext] : []), stageNote.node, chipsBox, composer]);
+   feed.append(anchor); // scroll sentinel: always the last child, everything else is inserted before it
+   // Grid children: feed, panel, dock. Desktop: panel is a side column. Narrow: panel sits between feed and dock.
+   const body = el("div", { class: "chat-body" }, [feed, panel.node, dock]);
+--- /tmp/claude-0/-home-claude/054260c6-8536-54e7-aad7-d3f2b2e30eeb/scratchpad/orig/frontend/src/views/decomposition.ts	2026-10-06 14:10:15.920621677 +0330
++++ ./frontend/src/views/decomposition.ts	2026-10-06 14:26:33.939226428 +0330
+@@ -6,6 +6,7 @@
+ import type { DecomposeEntry } from "../state/goals";
+ import type { WorkspaceTree } from "../state/goal-workspace";
+ import { journey } from "../state/journey";
++import { journeyNextStep } from "../lib/journey-next-step";
+ import type { DecomposeResponse } from "../api/types";
+ 
+ /** Unsubscribes the previously mounted instance (app.ts re-renders from scratch). */
+@@ -123,5 +124,8 @@
+   const workspaceBtn = el("button", { class: "btn-secondary", type: "button" }, [t().growth.workspace.openWorkspace]);
+   workspaceBtn.addEventListener("click", () => journey.goTo("GOAL_WORKSPACE"));
+ 
+-  return page(d.resultTitle, tree, el("div", { class: "form-actions" }, [continueBtn, workspaceBtn]));
++  // Part 20b: JourneyNextStep beside the two buttons: planning when items need it, else the daily plan. The result in hand
++  // is the answer (same rule as the Continue button above), so nothing is read from a store or sent.
++  const next = journeyNextStep({ stepId: "decompose", facts: { planningNone: result.all_planning_ready } });
++  return page(d.resultTitle, tree, el("div", { class: "form-actions" }, [continueBtn, workspaceBtn]), ...(next ? [next] : []));
+ }
+--- /tmp/claude-0/-home-claude/054260c6-8536-54e7-aad7-d3f2b2e30eeb/scratchpad/orig/frontend/src/views/goal-creation.ts	2026-10-06 14:10:15.919460827 +0330
++++ ./frontend/src/views/goal-creation.ts	2026-10-06 14:27:04.188590295 +0330
+@@ -2,6 +2,7 @@
+ import { el, errorMessage } from "../lib/dom";
+ import { errorBanner, page, setButtonLoading } from "../lib/page";
+ import { journey } from "../state/journey";
++import { journeyNextStep } from "../lib/journey-next-step";
+ import { handleAuthExpiry } from "../lib/auth-guard";
+ import { t } from "../lib/theme-i18n";
+ 
+@@ -125,5 +126,9 @@
+     }
+   });
+ 
+-  return el("div", {}, [page(g.title, errorSlot, form)]);
++  // Part 20b: the other way into the journey, beside the form: the same JourneyNextStep as after active hours, where the
++  // "Create a goal" button is dropped because this IS that screen (so only Brain Dump is left).
++  const brainDump = journeyNextStep({ stepId: "activeHours" });
++  const alternative = brainDump ? [el("p", { class: "journey-lead", dir: "auto" }, [t().growth.journey.lead.altBrainDump]), brainDump] : [];
++  return el("div", {}, [page(g.title, errorSlot, form, ...alternative)]);
+ }
+--- /tmp/claude-0/-home-claude/054260c6-8536-54e7-aad7-d3f2b2e30eeb/scratchpad/orig/frontend/src/views/goals.ts	2026-10-06 14:10:15.919812670 +0330
++++ ./frontend/src/views/goals.ts	2026-10-06 22:26:46.981805903 +0330
+@@ -8,8 +8,9 @@
+ import { asyncPanel, clearFieldDraftsByPrefix, confirmDialog, formField, scoreBar, submitLock } from "../lib/ui";
+ import { goalStepper } from "../state/goal-stepper";
+ import { goalsStore } from "../state/goals";
+-import type { GoalsState } from "../state/goals";
++import type { DecomposeEntry, GoalsState } from "../state/goals";
+ import { journey } from "../state/journey";
++import { journeyNextStep } from "../lib/journey-next-step";
+ import { goalStepperSection } from "./goal-stepper";
+ 
+ /**
+@@ -365,6 +366,7 @@
+           ...(run?.status === "ready" && run.outcome.kind === "existing" ? [el("p", { class: "goal-note" }, [g.roadmap.alreadyDone])] : []),
+           goalTreeList(tree),
+           el("div", { class: "form-actions" }, [open]),
++          ...justDecomposedNext(goal, run),
+         ]);
+       }
+       return decomposePrompt(goal, run?.status === "error" ? run.error : null);
+@@ -377,6 +379,18 @@
+   ]);
+ }
+ 
++/** Part 20b: right after a decompose that this session ran for THIS goal, JourneyNextStep beside "Open workspace":
++ * planning when items need it, else the daily plan. The planning page reads the decomposition in the journey, so the
++ * planning button is only offered while that is this goal's (it would otherwise open another goal's list); when nothing
++ * needs planning the daily plan is right either way. The result in hand is the answer: nothing is read or sent. */
++function justDecomposedNext(goal: Goal, run: DecomposeEntry | undefined): HTMLElement[] {
++  if (run?.status !== "ready" || run.outcome.kind !== "created") return [];
++  const result = run.outcome.result;
++  if (!result.all_planning_ready && journey.get().decomposition?.objective.goal_id !== goal.id) return [];
++  const next = journeyNextStep({ stepId: "decompose", facts: { planningNone: result.all_planning_ready } });
++  return next ? [next] : [];
++}
++
+ function decomposePrompt(goal: Goal, error: ApiError | null): HTMLElement {
+   const g = t().growth.goals.roadmap;
+   const btn = el("button", { class: "btn-primary", type: "button" }, [g.decompose]) as HTMLButtonElement;
+--- /tmp/claude-0/-home-claude/054260c6-8536-54e7-aad7-d3f2b2e30eeb/scratchpad/orig/frontend/src/views/my-profile-profile-save.ts	2026-10-06 14:10:15.920605673 +0330
++++ ./frontend/src/views/my-profile-profile-save.ts	2026-10-06 22:26:34.892717034 +0330
+@@ -2,6 +2,8 @@
+ import { handleAuthExpiry } from "../lib/auth-guard";
+ import { t } from "../lib/theme-i18n";
+ import { submitLock } from "../lib/ui";
++import { journeyNextStep } from "../lib/journey-next-step";
++import { hasActiveHours } from "../state/journey-facts";
+ import {
+   clearUiProfileSaveFeedback,
+   getUiProfileSaveFeedback,
+@@ -115,7 +117,13 @@
+     const line = el("p", { class: "my-profile-save__status", role: "status", tabindex: "-1", id: profileSaveId("status") }, [
+       f.phase === "saved" ? copy().saved : copy().discarded,
+     ]);
+-    feedbackSlot.replaceChildren(line);
++    const nodes: Node[] = [line];
++    // Part 20b: the save sent active hours and they are set: offer Brain Dump / Create a goal (no request, from the slice).
++    if (f.phase === "saved" && f.hours && hasActiveHours(read().data?.active_hours)) {
++      const next = journeyNextStep({ stepId: "activeHours", facts: { activeHoursSet: true } });
++      if (next) nodes.push(el("p", { class: "journey-lead", dir: "auto" }, [t().growth.journey.lead.hoursSaved]), next);
++    }
++    feedbackSlot.replaceChildren(...nodes);
+     if (takeFreshUiProfileFeedback()) {
+       // The button that had the focus was replaced by the redraw: put the focus on the message (once the node is in the page).
+       window.setTimeout(() => {
+--- /tmp/claude-0/-home-claude/054260c6-8536-54e7-aad7-d3f2b2e30eeb/scratchpad/orig/frontend/src/views/planning-required-page.ts	2026-10-06 14:10:15.920998010 +0330
++++ ./frontend/src/views/planning-required-page.ts	2026-10-06 14:26:41.275499941 +0330
+@@ -6,6 +6,7 @@
+ import { findSection } from "../growth-os";
+ import type { SectionId } from "../growth-os";
+ import { journey } from "../state/journey";
++import { journeyNextStep } from "../lib/journey-next-step";
+ import type { NextActionDraft, NextActionField } from "../state/next-action-form";
+ import { entryOf, planningProposalStore } from "../state/planning-proposal";
+ import type { PlanningProposalState } from "../state/planning-proposal";
+@@ -177,6 +178,14 @@
+     });
+   }
+ 
++  /** Part 20b: JourneyNextStep under the list, so the page is never a dead end while items remain. Quiet (secondary):
++   * the cards' own buttons are the main action here. Nothing is read or sent; an accepted / edited proposal that leaves the
++   * list redraws it, and the last one leaves the empty guide below, whose own "Go to Today" button is the same step. */
++  function dailyPlanNext(): HTMLElement[] {
++    const next = journeyNextStep({ stepId: "planning", quiet: true });
++    return next ? [el("p", { class: "journey-lead", dir: "auto" }, [t().growth.journey.lead.planningLater]), next] : [];
++  }
++
+   function list(s: PlanningRequiredState): HTMLElement {
+     const copy = t().growth.planningRequiredPage;
+     const count = new Intl.NumberFormat(getLocale()).format(s.items.length);
+@@ -184,6 +193,7 @@
+       el("p", { class: "lead" }, [copy.intro]),
+       el("h2", { class: "planning-required__heading", tabindex: "-1", "data-focus-key": "planning-list" }, [copy.listTitle(count)]),
+       el("ul", { class: "planning-required__list" }, s.items.map((row) => card(row, s))),
++      ...dailyPlanNext(),
+     ]);
+   }
+ 
+--- /tmp/claude-0/-home-claude/054260c6-8536-54e7-aad7-d3f2b2e30eeb/scratchpad/orig/frontend/src/views/section-view.ts	2026-10-06 14:10:15.921035981 +0330
++++ ./frontend/src/views/section-view.ts	2026-10-06 14:26:56.274855738 +0330
+@@ -5,6 +5,7 @@
+ import { emptyStateGuide } from "../lib/ui";
+ import { findRoute } from "../growth-os";
+ import { journey } from "../state/journey";
++import { journeyNextActions } from "../lib/journey-next-step";
+ import { renderProfileAccount } from "./profile-account";
+ import { renderBehaviorPage } from "./behavior";
+ import { renderBrainDumpPage } from "./brain-dump";
+@@ -47,6 +48,9 @@
+ 
+   const { section, route } = found;
+   const copy = g.routes[route.labelKey];
++  // Part 20b: "Next action proposals" has no screen of its own: its feature lives on "Planning required". Beside the
++  // "Go to chat" button, JourneyNextStep points there (and falls to the daily plan when nothing needs planning).
++  const toPlanning = route.id === "plan/next-actions" ? journeyNextActions("decompose")[0] : undefined;
+   return el("div", { class: "section-view" }, [
+     sectionSubnav(section, route.id),
+     page(
+@@ -56,7 +60,8 @@
+         title: g.shell.placeholder.title,
+         description: copy.description,
+         nextStep: g.shell.placeholder.nextStep,
+-        action: toChat,
++        action: toPlanning ?? toChat,
++        ...(toPlanning ? { secondaryAction: toChat } : {}),
+         headingLevel: 2,
+       })
+     ),

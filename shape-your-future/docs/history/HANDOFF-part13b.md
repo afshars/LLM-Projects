@@ -1,0 +1,38 @@
+# HANDOFF part 13b: Plan confirm (review panel, edit step, request) — route `plan/interview`, proposal screen
+
+**Run:** `tsc --noEmit -p .` clean, `vitest run` 49 files / 1212 tests pass (23 new in `smoke/plan-confirm.test.ts`; I broke the builder and the invalidate call on purpose to check the tests fail), `check-i18n-parity` OK (887 / 887), `vite build` OK. **Not seen in a browser** (layout, RTL, focus ring). `POST /chains/plan/confirm` is the ONLY call that saves.
+
+## What 13c needs (exact)
+- **Slice** `planProposal` (`state/plan-proposal.ts`) has four new fields: `confirmStatus: "idle" | "submitting" | "success" | "error"`, `confirmError: ApiError | null` (read `.kind`; build the text with `errorMessage(...)` at render time), `confirmResult: LogConfirmResponse | null` (`{ saved, log_date }`), `confirmedBody: PlanConfirmRequest | null` (the exact body that was sent). All reset to idle/null whenever the plan on screen changes (new propose answer, override, back to ranked) and on reset/login.
+- **Hooks** in `views/plan-proposal.ts`, both called on EVERY `draw()` (so they follow state and language switches): `drawConfirmError(slot, s)` -> slot `data-hook="plan-confirm-error"`, `drawConfirmSuccess(slot, s)` -> slot `data-hook="plan-confirm-success"`. Search for `13c HOOK`. Both slots are created once per mounted view and re-appended after the panel; today they only set `data-confirm-status` / `data-confirm-error-kind`. `.plan-confirm__feedback:empty` is `display:none`.
+- After an error the plan, the user's edits and an ENABLED Confirm are still there: a "Try again" only has to click the panel's Confirm (same lock, same `requestPlanConfirm`). The panel's own banner is off (`showErrors: false`); 401 -> `handleAuthExpiry` and 429 -> "please wait a moment" still happen inside the panel.
+- After a success the panel is `saved: true` (read-only, shows the SAVED values, title "Your saved plan", notice + Confirm/Undo row hidden), override/back-to-ranked are not rendered, focus moves to the panel title once. **Nothing else is shown yet**: the intro text at the top still says "Nothing is saved when you ask for it" (copy of 12d; 13c should replace it after a save).
+
+## Files
+- NEW `state/plan-confirm.ts` (pure, no UI, no fetch): `buildPlanConfirmBody(activeResult, edits, today)`, `planEditErrors`, `planEditItems` / `savedEditItems` (stable arrays per plan, see below), `toEditItem`, `editsOf`, slice transitions `markConfirming`, `applyConfirmSuccess`, `failConfirm`, `clearConfirm`.
+- `state/plan-proposal.ts`: the four fields, `NO_CONFIRM`, `isConfirmLocked`, `PlanConfirmStatus`; `canConfirmPlan` is false while saving / saved; `applyProposeResponse` and `restoreRankedResult` reset the confirm part.
+- `state/plan-proposal-flow.ts` (the only place that calls the API): NEW `requestPlanConfirm(edits, today)`; `requestPlanOverride` is now refused while saving / saved.
+- `views/plan-proposal.ts`: `drawPart13` now renders the override controls + `reviewAndConfirm` (key `plan-confirm`) + the two hook slots. The disabled placeholder Confirm and the "nothing is saved yet" note are gone. The new confirm button keeps the attribute `data-plan-part13-confirm`.
+- `growth-os/i18n/{en,fa}.ts`: `growth.planProposalPage.next` rewritten (title, description, panelTitle, savedTitle, highlightLabel/Hint/Required, slotLabel/Hint, confirm, undo). The notice itself is `ui.review.notSaved` (already fa + en: "Nothing is saved until you confirm." / "تا تأیید نکنی، هیچ چیزی ذخیره نمی‌شود.").
+- `styles/plan-interview.css`: `.plan-confirm__*`; the old `.plan-proposal__not-saved` rule is removed.
+- Tests: NEW `smoke/plan-confirm.test.ts`; `plan-proposal.test.ts` and `plan-override.test.ts` updated (Confirm is now an enabled button, notice text).
+
+## Behaviour
+- **Body** (`buildPlanConfirmBody`): `log_date` = `todayIso()` (passed in), `highlight` = edited text trimmed, or the proposal's exactly when not edited; `schedule_slot` = edited text trimmed or the proposal's, LEFT OUT when empty/null; `recommended_tactic_id`, `highlight_task_id`, `decision_id` copied from `activeResult` UNCHANGED (never trimmed/derived) and left out when null. Never null, never undefined. Free-text candidates and overrides therefore send no id keys.
+- **Editable:** only the highlight text (required) and the slot. An empty highlight is never sent: field error + focus (click is intercepted in capture phase, like brain-dump's `guardResend`); the flow also refuses (`kind "validation"`, recorded in the slice) as a second line.
+- **Lock:** the panel's own `submitLock("review:plan-confirm")` wraps `requestPlanConfirm`: Confirm + Undo disabled, `aria-busy` on the Confirm button and the panel. `syncControls` also disables Get my plan / Back / override controls and sets `aria-busy` on `#plan-part13-slot` while `confirmStatus === "submitting"`. A second click, or a click from a rebuilt view, sends nothing (`markConfirming` returns null -> `"skipped"`).
+- **No rebuild while saving:** `drawPart13` rebuilds the section only when the plan, ranked plan, picker open/closed, "propose loading" or "saved" changes. So the focused Confirm button is not replaced when the request starts or fails (focus returns to it after an error).
+- **Edits survive a language switch:** the panel's `items` array is the same object per plan (WeakMap keyed by `activeResult`), so reviewAndConfirm's draft and formField's drafts are restored. A NEW plan (override / new propose) starts with its own values, and the description says so. Going back to the ranked plan after an override gives a fresh draft too (the draft is per panel). "Undo my edits" (the panel's Cancel) rebuilds from the plan's own values.
+- **Success:** `invalidateDailyPlan()` is called as soon as the POST answers OK (even if the slice was reset meanwhile, because it IS saved); slice -> `success`.
+- **Errors:** 429 -> slice back to idle, no error stored; anything else -> `error` + the ApiError, plan and edits untouched.
+- Confirm is also disabled (panel `frozen`) while a propose/override request is running.
+
+## Things to know
+1. **Backend does not store `schedule_slot`.** `PlanConfirmRequest` accepts it, but `plan_confirm()` (backend/app/api/routes/chains.py) writes only `highlight`, `recommended_tactic_id`, `highlight_task_id`, `decision_id`. The slot the user edits is sent as the contract says, but is not persisted today. Backend decision, not touched here.
+2. **Edited highlight + unchanged ids:** per the contract the ids go back unchanged even when the user rewords the highlight, so a reworded text can still carry the original `highlight_task_id` / `decision_id` (the backend resolves the task by id, not by text). `buildPlanConfirmRequest` in api/client.ts (13a) is still there and still echoes the proposal untouched; the view uses the new function instead.
+3. **Bug fixed in 13a code:** the rebuilt "Use this one" button lost `aria-busy` while the override ran (the existing test `plan-override.test.ts > while it runs…` failed on the 13a zip; 13a's HANDOFF said vitest was not run). `syncControls` now sets it.
+4. The panel's hint text ("Edit or remove anything that isn't right…") is the shared `ui.review.notSavedHint`; "remove" does not apply here (`removable: false`). Not changed (shared copy).
+5. The cooldown after a 429 only locks the panel's own buttons; the other controls stay usable (nothing is in flight).
+6. Persian copy is mine: needs a native skim.
+
+- Commit: feat(plan): plan confirm (reviewAndConfirm panel with editable highlight + slot, buildPlanConfirmBody, requestPlanConfirm via submitLock, confirmStatus in the planProposal slice, invalidateDailyPlan after save, hooks for 13c error/success; fa+en)

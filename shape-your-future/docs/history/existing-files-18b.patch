@@ -1,0 +1,278 @@
+--- a/frontend/src/views/my-profile-tabs.ts
++++ b/frontend/src/views/my-profile-tabs.ts
+@@ -3,6 +3,7 @@
+ import { t } from "../lib/theme-i18n";
+ import type { DistractionRecordOut, EnergyProfileOut, HabitProfileOut, UserGoalsOut, UserPreferences, UserProfileOut } from "../api/types";
+ import { journey } from "../state/journey";
++import { renderEnergyTab } from "./my-profile-energy";
+ import { renderGoalsTab } from "./my-profile-goals";
+ import { renderPreferencesTab } from "./my-profile-preferences";
+ import { mountSliceTab } from "./my-profile-slice-tab";
+@@ -113,8 +114,11 @@
+     id: "energy",
+     labelKey: "energy",
+     containerId: "my-profile-energy-body",
++    // Part 18b: the form shows its own empty states (no hours, no readings), so the slice-level isEmpty is always false:
++    // a user with nothing recorded yet still gets the form, not the generic guide. (isUiSectionEmpty("energy") stays the
++    // completeness rule for callers outside this tab.)
+     render: (container) =>
+-      mountSliceTab<EnergyProfileOut>(container, sliceOptions<EnergyProfileOut>("energy", "uiEnergy", (e) => isUiSectionEmpty("energy", e))),
++      mountSliceTab<EnergyProfileOut>(container, { ...sliceOptions<EnergyProfileOut>("energy", "uiEnergy", () => false), renderReady: renderEnergyTab }),
+   },
+   {
+     id: "habits",
+--- a/frontend/src/growth-os/i18n/en.ts
++++ b/frontend/src/growth-os/i18n/en.ts
+@@ -1036,7 +1036,7 @@
+         label: "Your energy",
+         intro: "When your energy is high or low, as the mentor understands it.",
+         empty: { title: "No energy details yet", nextStep: "Tell the mentor in chat when you feel sharpest and when you run low, and it will note it here." },
+-        ready: "Your energy details are loaded. Editing them arrives in the next update.",
++        ready: "Your energy level and your high and low energy hours.",
+       },
+       habits: {
+         label: "Your habits",
+@@ -1292,6 +1292,84 @@
+         partial: (saved: string, notSaved: string) => `Saved: ${saved}. Not saved yet: ${notSaved}.`,
+       },
+     },
++    // Part 18b: the Energy tab (/user-intelligence/energy). Server errors are never written here: they come from errorMessage(err, "save").
++    energyForm: {
++      formLabel: "Energy details",
++      level: {
++        title: "Energy level",
++        label: "Your energy level right now (1 to 10)",
++        hint: "1 is very low and 10 is very high. Saving a new level also adds a reading to your history below.",
++        readout: (n: string, max: string) => `${n} of ${max}`,
++        notSet: "Not set",
++      },
++      hours: {
++        startLabel: "Start",
++        endLabel: "End",
++        remove: "Remove",
++        rawNote: "This isn't a time range (it may have come from the chat). You can leave it as it is or remove it.",
++        added: (n: string) => `Range ${n} added.`,
++        removed: (n: string) => `Range ${n} removed.`,
++        high: {
++          title: "High-energy hours",
++          intro: "When you feel sharpest. The mentor tries to put demanding tasks in these hours.",
++          empty: "No high-energy hours yet.",
++          add: "Add a high-energy range",
++          listLabel: "High-energy hour ranges",
++          rangeTitle: (n: string) => `High-energy range ${n}`,
++          removeName: (n: string) => `Remove high-energy range ${n}`,
++          startName: (n: string) => `High-energy range ${n}: start time`,
++          endName: (n: string) => `High-energy range ${n}: end time`,
++        },
++        low: {
++          title: "Low-energy hours",
++          intro: "When you run low. The mentor tries to keep heavy tasks out of these hours.",
++          empty: "No low-energy hours yet.",
++          add: "Add a low-energy range",
++          listLabel: "Low-energy hour ranges",
++          rangeTitle: (n: string) => `Low-energy range ${n}`,
++          removeName: (n: string) => `Remove low-energy range ${n}`,
++          startName: (n: string) => `Low-energy range ${n}: start time`,
++          endName: (n: string) => `Low-energy range ${n}: end time`,
++        },
++      },
++      errors: {
++        levelRange: "Enter a whole number from 1 to 10.",
++        levelClear: "The level can't be cleared. Enter a number from 1 to 10, or discard your changes.",
++        hoursIncomplete: "Fill in both the start and the end time, or remove this range.",
++        hoursFormat: "This isn't a time range. Remove it and add a range with a start and an end time.",
++        hoursOrder: "The end time must be after the start time (within the same day).",
++        hoursDuplicate: "This range is already in the list.",
++        hoursOverlap: "This range overlaps one in the other list. A time can't be both high and low energy.",
++      },
++      history: {
++        title: "Energy history",
++        intro: "Your past readings, newest first. A reading is added automatically when you save a new level; they can't be edited here.",
++        empty: "No readings yet. Your history starts when you save an energy level.",
++        listLabel: "Energy readings, newest first",
++        level: (n: string, max: string) => `Level ${n} of ${max}`,
++        noLevel: "No level recorded",
++        unknownDate: "Date unknown",
++        hidden: (n: string) => `${n} older readings are not shown.`,
++        trend: (count: string, first: string, last: string) => `Trend of your last ${count} readings, oldest to newest: from ${first} to ${last} out of 10.`,
++      },
++      save: {
++        areaLabel: "Save energy details",
++        save: "Save changes",
++        saving: "Saving…",
++        discard: "Discard changes",
++        saved: "Energy details saved.",
++        savedReading: "A reading was added to your history.",
++        discarded: "Changes discarded.",
++        noChanges: "No changes to save.",
++        fixFirst: "Fix the highlighted items before you save.",
++        showProblems: "Show what needs fixing",
++        retry: "Try again",
++        listSeparator: ", ",
++        willSave: (names: string) => `Will be saved: ${names}.`,
++        willAddReading: "Saving the level adds a reading to your history.",
++        names: { level: "Energy level", high: "High-energy hours", low: "Low-energy hours" },
++      },
++    },
+   },
+   // Part 16a: Behavior page shell (tabs, refresh, empty states). Error TEXT comes from errorMessage(err); the lists arrive in 16b-16d.
+   behaviorPage: {
+--- a/frontend/src/growth-os/i18n/fa.ts
++++ b/frontend/src/growth-os/i18n/fa.ts
+@@ -1024,7 +1024,7 @@
+         label: "انرژی تو",
+         intro: "اینکه انرژی‌ات کی زیاد و کی کم است، آن‌طور که همراه هوشمند می‌فهمد.",
+         empty: { title: "هنوز چیزی درباره‌ی انرژی‌ات ثبت نشده", nextStep: "در گفتگو بگو چه ساعت‌هایی سرحالی و کی خسته‌ای تا اینجا یادداشتش کند." },
+-        ready: "جزئیات انرژی‌ات بارگذاری شد. ویرایششان در به‌روزرسانی بعدی می‌آید.",
++        ready: "سطح انرژی و ساعت‌های پرانرژی و کم‌انرژی‌ات.",
+       },
+       habits: {
+         label: "عادت‌های تو",
+@@ -1274,6 +1274,84 @@
+         partial: (saved: string, notSaved: string) => `ذخیره شد: ${saved}. هنوز ذخیره نشده: ${notSaved}.`,
+       },
+     },
++    // Part 18b: تب انرژی (/user-intelligence/energy). متن خطای سرور اینجا نیست: از errorMessage(err, "save") می‌آید.
++    energyForm: {
++      formLabel: "جزئیات انرژی",
++      level: {
++        title: "سطح انرژی",
++        label: "سطح انرژی‌ات همین حالا (از ۱ تا ۱۰)",
++        hint: "۱ یعنی خیلی کم و ۱۰ یعنی خیلی زیاد. با ذخیره‌ی یک سطح تازه، یک ثبت هم به تاریخچه‌ی پایین اضافه می‌شود.",
++        readout: (n: string, max: string) => `${n} از ${max}`,
++        notSet: "ثبت نشده",
++      },
++      hours: {
++        startLabel: "شروع",
++        endLabel: "پایان",
++        remove: "حذف",
++        rawNote: "این یک بازه‌ی زمانی نیست (شاید از گفتگو آمده باشد). می‌توانی همین‌طور بگذاری‌اش یا حذفش کنی.",
++        added: (n: string) => `بازه‌ی ${n} اضافه شد.`,
++        removed: (n: string) => `بازه‌ی ${n} حذف شد.`,
++        high: {
++          title: "ساعت‌های پرانرژی",
++          intro: "وقت‌هایی که سرحال‌ترینی. همراه هوشمند سعی می‌کند کارهای سنگین را در این ساعت‌ها بگذارد.",
++          empty: "هنوز ساعت پرانرژی‌ای ثبت نشده.",
++          add: "افزودن بازه‌ی پرانرژی",
++          listLabel: "بازه‌های ساعت پرانرژی",
++          rangeTitle: (n: string) => `بازه‌ی پرانرژی ${n}`,
++          removeName: (n: string) => `حذف بازه‌ی پرانرژی ${n}`,
++          startName: (n: string) => `بازه‌ی پرانرژی ${n}: ساعت شروع`,
++          endName: (n: string) => `بازه‌ی پرانرژی ${n}: ساعت پایان`,
++        },
++        low: {
++          title: "ساعت‌های کم‌انرژی",
++          intro: "وقت‌هایی که انرژی‌ات پایین می‌آید. همراه هوشمند سعی می‌کند کارهای سنگین را از این ساعت‌ها دور نگه دارد.",
++          empty: "هنوز ساعت کم‌انرژی‌ای ثبت نشده.",
++          add: "افزودن بازه‌ی کم‌انرژی",
++          listLabel: "بازه‌های ساعت کم‌انرژی",
++          rangeTitle: (n: string) => `بازه‌ی کم‌انرژی ${n}`,
++          removeName: (n: string) => `حذف بازه‌ی کم‌انرژی ${n}`,
++          startName: (n: string) => `بازه‌ی کم‌انرژی ${n}: ساعت شروع`,
++          endName: (n: string) => `بازه‌ی کم‌انرژی ${n}: ساعت پایان`,
++        },
++      },
++      errors: {
++        levelRange: "یک عدد صحیح از ۱ تا ۱۰ وارد کن.",
++        levelClear: "سطح انرژی را نمی‌شود پاک کرد. عددی از ۱ تا ۱۰ وارد کن یا تغییرها را رها کن.",
++        hoursIncomplete: "هم ساعت شروع و هم ساعت پایان را پر کن، یا این بازه را حذف کن.",
++        hoursFormat: "این یک بازه‌ی زمانی نیست. حذفش کن و بازه‌ای با ساعت شروع و پایان اضافه کن.",
++        hoursOrder: "ساعت پایان باید بعد از ساعت شروع باشد (در همان روز).",
++        hoursDuplicate: "این بازه از قبل در فهرست هست.",
++        hoursOverlap: "این بازه با بازه‌ای در فهرست دیگر هم‌پوشانی دارد. یک ساعت نمی‌تواند هم پرانرژی باشد هم کم‌انرژی.",
++      },
++      history: {
++        title: "تاریخچه‌ی انرژی",
++        intro: "ثبت‌های قبلی‌ات، از تازه به قدیمی. با ذخیره‌ی هر سطح تازه خودکار یک ثبت اضافه می‌شود و اینجا قابل ویرایش نیست.",
++        empty: "هنوز ثبتی نیست. تاریخچه‌ات با ذخیره‌ی یک سطح انرژی شروع می‌شود.",
++        listLabel: "ثبت‌های انرژی، از تازه به قدیمی",
++        level: (n: string, max: string) => `سطح ${n} از ${max}`,
++        noLevel: "سطحی ثبت نشده",
++        unknownDate: "تاریخ نامشخص",
++        hidden: (n: string) => `${n} ثبت قدیمی‌تر نمایش داده نمی‌شود.`,
++        trend: (count: string, first: string, last: string) => `روند ${count} ثبت آخرت، از قدیمی به تازه: از ${first} به ${last} از ۱۰.`,
++      },
++      save: {
++        areaLabel: "ذخیره‌ی جزئیات انرژی",
++        save: "ذخیره‌ی تغییرها",
++        saving: "در حال ذخیره…",
++        discard: "رها کردن تغییرها",
++        saved: "جزئیات انرژی ذخیره شد.",
++        savedReading: "یک ثبت به تاریخچه‌ات اضافه شد.",
++        discarded: "تغییرها رها شد.",
++        noChanges: "تغییری برای ذخیره نیست.",
++        fixFirst: "پیش از ذخیره، موارد مشخص‌شده را درست کن.",
++        showProblems: "نمایش مواردی که باید درست شود",
++        retry: "دوباره تلاش کن",
++        listSeparator: "، ",
++        willSave: (names: string) => `ذخیره می‌شود: ${names}.`,
++        willAddReading: "با ذخیره‌ی سطح انرژی، یک ثبت به تاریخچه‌ات اضافه می‌شود.",
++        names: { level: "سطح انرژی", high: "ساعت‌های پرانرژی", low: "ساعت‌های کم‌انرژی" },
++      },
++    },
+   },
+   // Part 16a: Behavior page shell (tabs, refresh, empty states). Error TEXT comes from errorMessage(err); the lists arrive in 16b-16d.
+   behaviorPage: {
+--- a/frontend/src/styles/my-profile.css
++++ b/frontend/src/styles/my-profile.css
+@@ -140,3 +140,20 @@
+ .my-profile-save__changes[hidden] { display: none; }
+ .my-profile-save__error-text, .my-profile-save__error-extra { display: block; overflow-wrap: anywhere; }
+ .my-profile-save__error-extra { margin-block-start: var(--space-1); }
++
++/* ---------------- Part 18b: Energy tab ---------------- */
++
++.my-profile-energy__tab { display: grid; gap: var(--space-5); min-width: 0; }
++.my-profile-energy { min-width: 0; }
++.my-profile-energy__level { min-width: 0; }
++.my-profile-energy__level-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); min-width: 0; }
++.my-profile-energy__level-row input { width: 6rem; max-width: 100%; }
++.my-profile-energy__readout { font-weight: var(--weight-medium); overflow-wrap: anywhere; }
++.my-profile-energy__history { display: grid; gap: var(--space-3); min-width: 0; }
++.my-profile-energy__history-list { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; min-width: 0; }
++.my-profile-energy__history-item { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-2) var(--space-3); padding: var(--space-2) var(--space-3); border: 1px solid var(--color-border); border-radius: var(--radius-sm); background: var(--color-surface); min-width: 0; }
++.my-profile-energy__history-date, .my-profile-energy__history-level { overflow-wrap: anywhere; }
++.my-profile-energy__history-level { color: var(--color-text-muted); }
++.my-profile-energy__trend { width: 100%; max-width: 20rem; height: auto; color: var(--color-accent); }
++.my-profile-energy__trend-line { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
++.my-profile-energy__trend-dot { fill: currentColor; }
+--- a/frontend/smoke/my-profile-tabs-18a.test.ts
++++ b/frontend/smoke/my-profile-tabs-18a.test.ts
+@@ -111,7 +111,9 @@
+     await flush();
+     expect(calls).toEqual([P, E]);
+     expect(panel("energy").hidden).toBe(false);
+-    expect(body("energy").querySelector(".my-profile__ready")!.textContent).toBe("Your energy details are loaded. Editing them arrives in the next update.");
++    // Part 18b: the placeholder is replaced by the real form (see smoke/my-profile-energy-view.test.ts).
++    expect(body("energy").querySelector(".my-profile__ready")).toBeNull();
++    expect(body("energy").querySelector("#my-profile-energy-form")).not.toBeNull();
+   });
+ 
+   it("habits and distractions load on their first visit and show their placeholder", async () => {
+@@ -124,18 +126,23 @@
+     expect(body("distractions").querySelector(".my-profile__ready")).not.toBeNull();
+   });
+ 
+-  it("an EMPTY slice shows the empty guide with the chat action (rule of state/ui-section-completeness.ts)", async () => {
++  it("an EMPTY habits / distractions slice shows the empty guide with the chat action (rule of state/ui-section-completeness.ts); Energy shows its form", async () => {
+     answers[E] = { status: 200, body: { user_id: 1, energy_level: null, high_energy_hours: [], low_energy_hours: [], historical_energy_patterns: [{ energy_level: null }] } };
+     answers[H] = { status: 200, body: { user_id: 1, sleep: {}, exercise: { days: null }, food: {}, work: {}, learning: {}, leisure: {} } };
+     answers[D] = { status: 200, body: [] };
+-    for (const id of ["energy", "habits", "distractions"]) {
++    for (const id of ["habits", "distractions"]) {
+       tab(id).click();
+       await flush();
+       expect(body(id).querySelector(".my-profile__ready")).toBeNull();
+       expect(body(id).querySelector(".ui-empty")).not.toBeNull();
+       expect(body(id).textContent).toContain("Open chat");
+     }
+-    expect(body("energy").textContent).toContain("No energy details yet");
++    // Part 18b: Energy has its own empty states inside the form, never the generic guide.
++    tab("energy").click();
++    await flush();
++    expect(body("energy").querySelector(".ui-empty")).toBeNull();
++    expect(body("energy").querySelector("#my-profile-energy-form")).not.toBeNull();
++    expect(body("energy").textContent).toContain("No high-energy hours yet.");
+     expect(body("habits").textContent).toContain("No habits recorded yet");
+     expect(body("distractions").textContent).toContain("No distractions recorded yet");
+   });

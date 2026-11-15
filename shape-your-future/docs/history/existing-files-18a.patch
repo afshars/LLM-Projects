@@ -1,0 +1,475 @@
+--- a/frontend/src/state/user-intelligence.ts
++++ b/frontend/src/state/user-intelligence.ts
+@@ -1,8 +1,10 @@
+-import type { ApiError, UserGoalsOut, UserPreferences, UserProfileOut } from "../api/types";
++import type { ApiError, EnergyProfileOut, HabitProfileOut, UserGoalsOut, UserPreferences, UserProfileOut } from "../api/types";
+ import { isApiError } from "../lib/dom";
+ import { journey } from "./journey";
+ import { PREFERENCES_DRAFT_CODEC } from "./preference-rows";
+ import type { PreferenceRow } from "./preference-rows";
++import { DISTRACTIONS_DRAFT_CODEC } from "./ui-distractions";
++import type { UiDistractionEntryDraft, UiDistractionRecords } from "./ui-distractions";
+ 
+ /**
+  * Part 17a-1: state of the /user-intelligence/* forms (profile, preferences, goals). NO UI, NO fetch, NO translated
+@@ -13,6 +15,14 @@
+  *   uiProfile       GET /user-intelligence/profile            UserProfileOut      getUserProfile()
+  *   uiPreferences   GET /user-intelligence/preferences        UserPreferences     getUserPreferences()
+  *   uiGoals         GET /user-intelligence/goals              UserGoalsOut        getUserGoals()
++ *   uiEnergy        GET /user-intelligence/energy             EnergyProfileOut    getEnergyProfile()          (Part 18a)
++ *   uiHabits        GET /user-intelligence/habits             HabitProfileOut     getHabitProfile()           (Part 18a)
++ *   uiDistractions  GET /user-intelligence/distractions       UiDistractionRecords (a LIST)  listUserDistractions()  (Part 18a)
++ *
++ * Part 18a: `uiDistractions` is the smart profile's distraction PROFILE. It is NOT /behavior/distractions (the dated
++ * event log of Part 16c, state/behavior-distractions*.ts). It has no PUT: the server only appends (POST), so its
++ * draft is the next record to add (state/ui-distractions.ts), not a copy of the data. The other two are plain partial
++ * PUTs: diffForPartialPut(slice.data, slice.draft) (see the notes in state/diffForPartialPut.ts).
+  *
+  * Each slice is { data, draft, status, error }:
+  *   data    the last answer from the server (null until the first success, and after invalidate).
+@@ -38,7 +48,7 @@
+  *  - discard edits: resetDraft(name) puts draft back to a copy of data.
+  */
+ 
+-export type UiSliceName = "uiProfile" | "uiPreferences" | "uiGoals";
++export type UiSliceName = "uiProfile" | "uiPreferences" | "uiGoals" | "uiEnergy" | "uiHabits" | "uiDistractions";
+ 
+ export type UiStatus = "idle" | "loading" | "success" | "error";
+ 
+@@ -57,9 +67,15 @@
+   /** Part 17c-1: the draft is the editor's row list; `data` stays the dict the server sent. */
+   readonly uiPreferences: UiSlice<UserPreferences, PreferenceRow[]>;
+   readonly uiGoals: UiSlice<UserGoalsOut>;
++  /** Part 18a. */
++  readonly uiEnergy: UiSlice<EnergyProfileOut>;
++  /** Part 18a. */
++  readonly uiHabits: UiSlice<HabitProfileOut>;
++  /** Part 18a: `data` is the LIST of records; the draft is the entry being typed (state/ui-distractions.ts). */
++  readonly uiDistractions: UiSlice<UiDistractionRecords, UiDistractionEntryDraft>;
+ }
+ 
+-export const UI_SLICE_NAMES: readonly UiSliceName[] = ["uiProfile", "uiPreferences", "uiGoals"];
++export const UI_SLICE_NAMES: readonly UiSliceName[] = ["uiProfile", "uiPreferences", "uiGoals", "uiEnergy", "uiHabits", "uiDistractions"];
+ 
+ // ---------------- Pure transitions ----------------
+ 
+@@ -143,10 +159,13 @@
+ export type UiChange = UiSliceName | "all";
+ type Listener = (change: UiChange) => void;
+ 
++/** Every slice idle. */
++const idleState = (): UiState => ({ uiProfile: IDLE, uiPreferences: IDLE, uiGoals: IDLE, uiEnergy: IDLE, uiHabits: IDLE, uiDistractions: IDLE });
++
+ class UserIntelligenceStore {
+-  private state: UiState = { uiProfile: IDLE, uiPreferences: IDLE, uiGoals: IDLE };
++  private state: UiState = idleState();
+   /** Bumped by invalidate / reset: an answer that arrives for an older generation is dropped. */
+-  private generations: Record<UiSliceName, number> = { uiProfile: 0, uiPreferences: 0, uiGoals: 0 };
++  private generations: Record<UiSliceName, number> = { uiProfile: 0, uiPreferences: 0, uiGoals: 0, uiEnergy: 0, uiHabits: 0, uiDistractions: 0 };
+   private listeners: Listener[] = [];
+ 
+   get(): UiState {
+@@ -178,7 +197,7 @@
+   /** Everything back to the start (login step): all slices idle. */
+   reset(): void {
+     for (const name of UI_SLICE_NAMES) this.generations[name]++;
+-    this.state = { uiProfile: IDLE, uiPreferences: IDLE, uiGoals: IDLE };
++    this.state = idleState();
+     this.emit("all");
+   }
+ 
+@@ -209,6 +228,18 @@
+ export function setUiGoalsDraft(draft: UserGoalsOut): void {
+   userIntelligenceStore.set("uiGoals", uiWithDraft(userIntelligenceStore.getSlice("uiGoals"), draft));
+ }
++/** Part 18a. */
++export function setUiEnergyDraft(draft: EnergyProfileOut): void {
++  userIntelligenceStore.set("uiEnergy", uiWithDraft(userIntelligenceStore.getSlice("uiEnergy"), draft));
++}
++/** Part 18a. */
++export function setUiHabitsDraft(draft: HabitProfileOut): void {
++  userIntelligenceStore.set("uiHabits", uiWithDraft(userIntelligenceStore.getSlice("uiHabits"), draft));
++}
++/** Part 18a: the draft of this slice is the NEXT record to add (state/ui-distractions.ts), not the list. */
++export function setUiDistractionsDraft(draft: UiDistractionEntryDraft): void {
++  userIntelligenceStore.set("uiDistractions", uiWithDraft(userIntelligenceStore.getSlice("uiDistractions"), draft));
++}
+ 
+ /** The server accepted a save: its answer becomes data and draft. */
+ export function applySavedUiProfile(answer: UserProfileOut): void {
+@@ -220,6 +251,26 @@
+ export function applySavedUiGoals(answer: UserGoalsOut): void {
+   userIntelligenceStore.set("uiGoals", uiApplySaved(userIntelligenceStore.getSlice("uiGoals"), answer));
+ }
++/** Part 18a. */
++export function applySavedUiEnergy(answer: EnergyProfileOut): void {
++  userIntelligenceStore.set("uiEnergy", uiApplySaved(userIntelligenceStore.getSlice("uiEnergy"), answer));
++}
++/** Part 18a. */
++export function applySavedUiHabits(answer: HabitProfileOut): void {
++  userIntelligenceStore.set("uiHabits", uiApplySaved(userIntelligenceStore.getSlice("uiHabits"), answer));
++}
++/**
++ * Part 18a: the server accepted a POST /user-intelligence/distractions and answered with the new record. The record is
++ * appended to `data` (the server lists oldest first, so the end is where it belongs) and the entry draft goes back to
++ * blank. Ignored while there is no data (nothing to append to: the next load will include it). A record whose id is
++ * already in the list is not added twice.
++ */
++export function applyAddedUiDistraction(record: UiDistractionRecords[number]): void {
++  const slice = userIntelligenceStore.getSlice("uiDistractions");
++  if (slice.data === null) return;
++  const records = slice.data.some((r) => r.id === record.id) ? slice.data : [...slice.data, record];
++  userIntelligenceStore.set("uiDistractions", uiApplySaved(slice, records, DISTRACTIONS_DRAFT_CODEC));
++}
+ 
+ /** Discard unsaved edits. */
+ export function resetUiProfileDraft(): void {
+@@ -231,6 +282,18 @@
+ export function resetUiGoalsDraft(): void {
+   userIntelligenceStore.set("uiGoals", uiResetDraft(userIntelligenceStore.getSlice("uiGoals")));
+ }
++/** Part 18a. */
++export function resetUiEnergyDraft(): void {
++  userIntelligenceStore.set("uiEnergy", uiResetDraft(userIntelligenceStore.getSlice("uiEnergy")));
++}
++/** Part 18a. */
++export function resetUiHabitsDraft(): void {
++  userIntelligenceStore.set("uiHabits", uiResetDraft(userIntelligenceStore.getSlice("uiHabits")));
++}
++/** Part 18a: the entry goes back to blank (the records are untouched). */
++export function resetUiDistractionsDraft(): void {
++  userIntelligenceStore.set("uiDistractions", uiResetDraft(userIntelligenceStore.getSlice("uiDistractions"), DISTRACTIONS_DRAFT_CODEC));
++}
+ 
+ // ---------------- invalidateUi...() : one per slice ----------------
+ // Call these after something other than the form changed the data (e.g. the AI wrote to the profile, a goal was
+@@ -248,6 +311,21 @@
+   userIntelligenceStore.invalidate("uiGoals");
+ }
+ 
++/** Part 18a. Called after the dashboard check-in writes the energy level (state/dashboard.ts). */
++export function invalidateUiEnergy(): void {
++  userIntelligenceStore.invalidate("uiEnergy");
++}
++
++/** Part 18a. Called after the dashboard check-in writes the sleep habit (state/dashboard.ts). */
++export function invalidateUiHabits(): void {
++  userIntelligenceStore.invalidate("uiHabits");
++}
++
++/** Part 18a. For the SMART PROFILE distractions only (/user-intelligence/distractions), never the behavior log. */
++export function invalidateUiDistractions(): void {
++  userIntelligenceStore.invalidate("uiDistractions");
++}
++
+ // Dropped when the user arrives at the login step, like every other store.
+ let previousStep = journey.get().step;
+ journey.subscribe((s) => {
+--- a/frontend/src/state/user-intelligence-flow.ts
++++ b/frontend/src/state/user-intelligence-flow.ts
+@@ -1,8 +1,10 @@
+ import { apiClient } from "../api/client";
+-import type { UserGoalsOut, UserPreferences, UserProfileOut } from "../api/types";
++import type { EnergyProfileOut, HabitProfileOut, UserGoalsOut, UserPreferences, UserProfileOut } from "../api/types";
+ import { handleAuthExpiry } from "../lib/auth-guard";
+ import { PREFERENCES_DRAFT_CODEC } from "./preference-rows";
+ import type { PreferenceRow } from "./preference-rows";
++import { DISTRACTIONS_DRAFT_CODEC } from "./ui-distractions";
++import type { UiDistractionEntryDraft, UiDistractionRecords } from "./ui-distractions";
+ import { uiApplyLoaded, uiCanRefresh, uiFail, uiMarkLoading, uiNeedsLoad, userIntelligenceStore } from "./user-intelligence";
+ import type { UiDraftCodec, UiSlice, UiSliceName } from "./user-intelligence";
+ 
+@@ -28,14 +30,18 @@
+ export type UiOutcome = "ok" | "failed" | "skipped";
+ 
+ const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
++/** Part 18a: GET /user-intelligence/distractions answers a LIST of records; every item must be an object. */
++const isRecordList = (v: unknown): v is Record<string, unknown>[] => Array.isArray(v) && v.every(isRecord);
+ 
+-/** One GET for one slice. A body that is not an object (malformed) is an "unknown" error, never stored as data. */
++/** One GET for one slice. A body of the wrong shape (an object slice that gets a list or a scalar, the distractions
++ * list that gets anything but a list of objects) is an "unknown" error, never stored as data. */
+ async function run<T, D = T>(
+   name: UiSliceName,
+   get: () => UiSlice<T, D>,
+   put: (slice: UiSlice<T, D>) => void,
+   call: () => Promise<T>,
+-  codec?: UiDraftCodec<T, D>
++  codec?: UiDraftCodec<T, D>,
++  isShapeOk: (answer: unknown) => boolean = isRecord
+ ): Promise<UiOutcome> {
+   const started = userIntelligenceStore.generation(name);
+   const stale = () => userIntelligenceStore.generation(name) !== started;
+@@ -43,7 +49,7 @@
+   try {
+     const answer = await call();
+     if (stale()) return "skipped";
+-    if (!isRecord(answer)) {
++    if (!isShapeOk(answer)) {
+       put(uiFail(get(), null));
+       return "failed";
+     }
+@@ -86,6 +92,36 @@
+   );
+ }
+ 
++function fetchEnergy(): Promise<UiOutcome> {
++  return run<EnergyProfileOut>(
++    "uiEnergy",
++    () => userIntelligenceStore.getSlice("uiEnergy"),
++    (s) => userIntelligenceStore.set("uiEnergy", s),
++    () => apiClient.getEnergyProfile()
++  );
++}
++
++function fetchHabits(): Promise<UiOutcome> {
++  return run<HabitProfileOut>(
++    "uiHabits",
++    () => userIntelligenceStore.getSlice("uiHabits"),
++    (s) => userIntelligenceStore.set("uiHabits", s),
++    () => apiClient.getHabitProfile()
++  );
++}
++
++/** The smart profile's distraction PROFILE (/user-intelligence/distractions), NOT /behavior/distractions. */
++function fetchDistractions(): Promise<UiOutcome> {
++  return run<UiDistractionRecords, UiDistractionEntryDraft>(
++    "uiDistractions",
++    () => userIntelligenceStore.getSlice("uiDistractions"),
++    (s) => userIntelligenceStore.set("uiDistractions", s),
++    () => apiClient.listUserDistractions(),
++    DISTRACTIONS_DRAFT_CODEC,
++    isRecordList
++  );
++}
++
+ // ---------------- First visit ----------------
+ 
+ export function ensureUiProfileLoaded(): Promise<UiOutcome> {
+@@ -98,6 +134,16 @@
+   return uiNeedsLoad(userIntelligenceStore.getSlice("uiGoals")) ? fetchGoals() : Promise.resolve("skipped");
+ }
+ 
++export function ensureUiEnergyLoaded(): Promise<UiOutcome> {
++  return uiNeedsLoad(userIntelligenceStore.getSlice("uiEnergy")) ? fetchEnergy() : Promise.resolve("skipped");
++}
++export function ensureUiHabitsLoaded(): Promise<UiOutcome> {
++  return uiNeedsLoad(userIntelligenceStore.getSlice("uiHabits")) ? fetchHabits() : Promise.resolve("skipped");
++}
++export function ensureUiDistractionsLoaded(): Promise<UiOutcome> {
++  return uiNeedsLoad(userIntelligenceStore.getSlice("uiDistractions")) ? fetchDistractions() : Promise.resolve("skipped");
++}
++
+ // ---------------- Explicit refresh ----------------
+ 
+ export function refreshUiProfile(): Promise<UiOutcome> {
+@@ -109,3 +155,12 @@
+ export function refreshUiGoals(): Promise<UiOutcome> {
+   return uiCanRefresh(userIntelligenceStore.getSlice("uiGoals")) ? fetchGoals() : Promise.resolve("skipped");
+ }
++export function refreshUiEnergy(): Promise<UiOutcome> {
++  return uiCanRefresh(userIntelligenceStore.getSlice("uiEnergy")) ? fetchEnergy() : Promise.resolve("skipped");
++}
++export function refreshUiHabits(): Promise<UiOutcome> {
++  return uiCanRefresh(userIntelligenceStore.getSlice("uiHabits")) ? fetchHabits() : Promise.resolve("skipped");
++}
++export function refreshUiDistractions(): Promise<UiOutcome> {
++  return uiCanRefresh(userIntelligenceStore.getSlice("uiDistractions")) ? fetchDistractions() : Promise.resolve("skipped");
++}
+--- a/frontend/src/state/dashboard.ts
++++ b/frontend/src/state/dashboard.ts
+@@ -3,6 +3,7 @@
+ import type { ApiError, DailyPlan, Goal, GoalTreeResponse, NextAction } from "../api/types";
+ import { handleAuthExpiry } from "../lib/auth-guard";
+ import { invalidateDailyPlan } from "./daily-plan";
++import { invalidateUiEnergy, invalidateUiHabits } from "./user-intelligence";
+ import { isApiError } from "../lib/dom";
+ 
+ /**
+@@ -429,6 +430,9 @@
+       apiClient.updateEnergyLevel(ENERGY_TO_BACKEND[choice.energy]),
+       apiClient.updateSleepHabit({ quality: choice.sleep, date: this.state.today }),
+     ]);
++    // Part 18a: a write that went through makes the My profile slice of the same data stale (if it was ever loaded).
++    if (results[0].status === "fulfilled") invalidateUiEnergy();
++    if (results[1].status === "fulfilled") invalidateUiHabits();
+     for (const r of results) {
+       if (r.status === "rejected" && handleAuthExpiry(r.reason)) return;
+     }
+--- a/frontend/src/state/diffForPartialPut.ts
++++ b/frontend/src/state/diffForPartialPut.ts
+@@ -31,6 +31,20 @@
+  *    422. Call without `nullable`. (This route changes one category per call, so a caller sends one request per
+  *    key of `body`; see HANDOFF-part17a-1.md.)
+  *
++ *  - PUT /user-intelligence/energy (Part 18a): NO null, for two different reasons. `high_energy_hours` / `low_energy_hours`
++ *    accept null in the request model but the service stores it as the text "null", and every later GET then fails
++ *    response validation (500): clear a list with [] (the diff does that, a draft [] over a filled list is a change).
++ *    `energy_level` accepts null too, but any energy_level key in the body is also APPENDED to
++ *    historical_energy_patterns (with a null level here), so the level cannot be "cleared" cleanly: leave it out
++ *    (draft equal to data = not sent). `historical_energy_patterns` and `user_id` are server-written: never part of a body.
++ *    Call without `nullable`.
++ *  - PUT /user-intelligence/habits (Part 18a): NO null. Each category is a dict; the service ignores a category that is not
++ *    a dict (null included) and merges a dict with dict.update() per top-level key of that category (the docstring says
++ *    deep-merge, the code is shallow). So a key the user REMOVED from a category stays on the server (same as
++ *    "Nested objects" below), and a null VALUE inside a category is stored as a value. Call without `nullable`.
++ *  - /user-intelligence/distractions (Part 18a): NO PUT at all. It is a list the server only appends to (POST one
++ *    record). diffForPartialPut does not apply; the slice's draft is the next record to add (state/ui-distractions.ts).
++ *
+  * Nested objects (`preferences` on the profile, and every value inside the preferences dict)
+  *  The server DEEP-MERGES them (profile) or shallow-merges per top-level key (preferences). So a key the user
+  *  REMOVED from a nested object stays on the server: omitting it is not a delete. The diff reports a nested change
+--- a/frontend/src/views/my-profile-slice-tab.ts
++++ b/frontend/src/views/my-profile-slice-tab.ts
+@@ -5,10 +5,16 @@
+ import type { UiSlice, UiSliceName } from "../state/user-intelligence";
+ import { userIntelligenceStore } from "../state/user-intelligence";
+ import {
++  ensureUiDistractionsLoaded,
++  ensureUiEnergyLoaded,
+   ensureUiGoalsLoaded,
++  ensureUiHabitsLoaded,
+   ensureUiPreferencesLoaded,
+   ensureUiProfileLoaded,
++  refreshUiDistractions,
++  refreshUiEnergy,
+   refreshUiGoals,
++  refreshUiHabits,
+   refreshUiPreferences,
+   refreshUiProfile,
+ } from "../state/user-intelligence-flow";
+@@ -49,6 +55,9 @@
+   uiProfile: { ensure: ensureUiProfileLoaded, refresh: refreshUiProfile },
+   uiPreferences: { ensure: ensureUiPreferencesLoaded, refresh: refreshUiPreferences },
+   uiGoals: { ensure: ensureUiGoalsLoaded, refresh: refreshUiGoals },
++  uiEnergy: { ensure: ensureUiEnergyLoaded, refresh: refreshUiEnergy },
++  uiHabits: { ensure: ensureUiHabitsLoaded, refresh: refreshUiHabits },
++  uiDistractions: { ensure: ensureUiDistractionsLoaded, refresh: refreshUiDistractions },
+ };
+ 
+ /** Pure. The AsyncPanel status for a slice: data on screen stays "ready" while it is being refreshed. */
+--- a/frontend/src/views/my-profile-tabs.ts
++++ b/frontend/src/views/my-profile-tabs.ts
+@@ -1,12 +1,13 @@
+ import type { growthEn } from "../growth-os/i18n/en";
+ import { el } from "../lib/dom";
+ import { t } from "../lib/theme-i18n";
+-import type { UserGoalsOut, UserPreferences, UserProfileOut } from "../api/types";
++import type { DistractionRecordOut, EnergyProfileOut, HabitProfileOut, UserGoalsOut, UserPreferences, UserProfileOut } from "../api/types";
+ import { journey } from "../state/journey";
+ import { renderGoalsTab } from "./my-profile-goals";
+ import { renderPreferencesTab } from "./my-profile-preferences";
+ import { mountSliceTab } from "./my-profile-slice-tab";
+ import type { SliceTabOptions } from "./my-profile-slice-tab";
++import { isUiSectionEmpty } from "../state/ui-section-completeness";
+ import type { UiSliceName } from "../state/user-intelligence";
+ 
+ /**
+@@ -105,4 +106,32 @@
+         renderReady: renderGoalsTab,
+       }),
+   },
++  // ---- Part 18a: Energy, Habits, Distractions. Slice + AsyncPanel placeholder only: the forms arrive in 18b-18d,
++  // which replace `renderReady` (and `isEmpty`, once a form shows its own empty state). The empty rule is the one
++  // documented in state/ui-section-completeness.ts, so the tab and the completeness helper never disagree.
++  {
++    id: "energy",
++    labelKey: "energy",
++    containerId: "my-profile-energy-body",
++    render: (container) =>
++      mountSliceTab<EnergyProfileOut>(container, sliceOptions<EnergyProfileOut>("energy", "uiEnergy", (e) => isUiSectionEmpty("energy", e))),
++  },
++  {
++    id: "habits",
++    labelKey: "habits",
++    containerId: "my-profile-habits-body",
++    render: (container) =>
++      mountSliceTab<HabitProfileOut>(container, sliceOptions<HabitProfileOut>("habits", "uiHabits", (h) => isUiSectionEmpty("habits", h))),
++  },
++  {
++    // The smart profile's distraction PROFILE (/user-intelligence/distractions), not the Behavior page's event log.
++    id: "distractions",
++    labelKey: "distractions",
++    containerId: "my-profile-distractions-body",
++    render: (container) =>
++      mountSliceTab<DistractionRecordOut[]>(
++        container,
++        sliceOptions<DistractionRecordOut[]>("distractions", "uiDistractions", (records) => isUiSectionEmpty("distractions", records))
++      ),
++  },
+ ];
+--- a/frontend/src/growth-os/i18n/en.ts
++++ b/frontend/src/growth-os/i18n/en.ts
+@@ -1011,7 +1011,7 @@
+     intro: "This is what the mentor has learned about how you work. Review it and correct anything that is wrong.",
+     tabsLabel: "Smart profile sections",
+     emptyCta: "Open chat",
+-    tabs: { profile: "Profile", preferences: "Preferences", goals: "Goals" },
++    tabs: { profile: "Profile", preferences: "Preferences", goals: "Goals", energy: "Energy", habits: "Habits", distractions: "Distractions" },
+     panels: {
+       profile: {
+         label: "Profile details",
+@@ -1031,6 +1031,26 @@
+         empty: { title: "No goals recorded yet", nextStep: "Tell the mentor what you want to achieve in chat and it will note it here." },
+         ready: "Your goals are ready to edit.",
+       },
++      // Part 18a: placeholders (slice + AsyncPanel only); the forms arrive in 18b-18d and reword `ready`.
++      energy: {
++        label: "Your energy",
++        intro: "When your energy is high or low, as the mentor understands it.",
++        empty: { title: "No energy details yet", nextStep: "Tell the mentor in chat when you feel sharpest and when you run low, and it will note it here." },
++        ready: "Your energy details are loaded. Editing them arrives in the next update.",
++      },
++      habits: {
++        label: "Your habits",
++        intro: "Your daily habits: sleep, exercise, food, work, learning and free time.",
++        empty: { title: "No habits recorded yet", nextStep: "Tell the mentor in chat about your sleep, exercise or work routine and it will note it here." },
++        ready: "Your habits are loaded. Editing them arrives in the next update.",
++      },
++      // This is the smart profile's distraction profile, NOT the distraction log of the Behavior page: the intro says so.
++      distractions: {
++        label: "What distracts you",
++        intro: "What tends to pull you away from your work, as the mentor knows it. This is separate from the distraction log on the Behavior page.",
++        empty: { title: "No distractions recorded yet", nextStep: "Tell the mentor in chat what usually pulls you away and it will note it here." },
++        ready: "Your distractions are loaded. Adding them arrives in the next update.",
++      },
+     },
+     // Part 17b-1: the Profile tab form. Error TEXT for a failed load comes from errorMessage(err); the messages below are the
+     // validation codes of state/ui-profile-form.ts (UiProfileErrorKey), looked up at render time.
+--- a/frontend/src/growth-os/i18n/fa.ts
++++ b/frontend/src/growth-os/i18n/fa.ts
+@@ -999,7 +999,7 @@
+     intro: "این چیزهایی است که همراه هوشمند درباره‌ی شیوه‌ی کار تو یاد گرفته. مرورش کن و هر چه درست نیست اصلاح کن.",
+     tabsLabel: "بخش‌های پروفایل هوشمند",
+     emptyCta: "باز کردن گفتگو",
+-    tabs: { profile: "پروفایل", preferences: "ترجیحات", goals: "اهداف" },
++    tabs: { profile: "پروفایل", preferences: "ترجیحات", goals: "اهداف", energy: "انرژی", habits: "عادت‌ها", distractions: "حواس‌پرتی‌ها" },
+     panels: {
+       profile: {
+         label: "جزئیات پروفایل",
+@@ -1019,6 +1019,25 @@
+         empty: { title: "هنوز هدفی ثبت نشده", nextStep: "در گفتگو بگو می‌خواهی به چه برسی تا اینجا یادداشتش کند." },
+         ready: "اهدافت آماده‌ی ویرایش است.",
+       },
++      // Part 18a: placeholders (slice + AsyncPanel only); the forms arrive in 18b-18d and reword `ready`.
++      energy: {
++        label: "انرژی تو",
++        intro: "اینکه انرژی‌ات کی زیاد و کی کم است، آن‌طور که همراه هوشمند می‌فهمد.",
++        empty: { title: "هنوز چیزی درباره‌ی انرژی‌ات ثبت نشده", nextStep: "در گفتگو بگو چه ساعت‌هایی سرحالی و کی خسته‌ای تا اینجا یادداشتش کند." },
++        ready: "جزئیات انرژی‌ات بارگذاری شد. ویرایششان در به‌روزرسانی بعدی می‌آید.",
++      },
++      habits: {
++        label: "عادت‌های تو",
++        intro: "عادت‌های روزمره‌ات: خواب، ورزش، غذا، کار، یادگیری و وقت آزاد.",
++        empty: { title: "هنوز عادتی ثبت نشده", nextStep: "در گفتگو درباره‌ی خواب، ورزش یا روال کاری‌ات بگو تا اینجا یادداشتش کند." },
++        ready: "عادت‌هایت بارگذاری شد. ویرایششان در به‌روزرسانی بعدی می‌آید.",
++      },
++      distractions: {
++        label: "چه چیزی حواست را پرت می‌کند",
++        intro: "آنچه معمولاً تو را از کار دور می‌کند، آن‌طور که همراه هوشمند می‌شناسد. این جدا از گزارش حواس‌پرتی‌ها در صفحه‌ی رفتار است.",
++        empty: { title: "هنوز حواس‌پرتی‌ای ثبت نشده", nextStep: "در گفتگو بگو معمولاً چه چیزی تو را از کار دور می‌کند تا اینجا یادداشتش کند." },
++        ready: "حواس‌پرتی‌هایت بارگذاری شد. افزودنشان در به‌روزرسانی بعدی می‌آید.",
++      },
+     },
+     // Part 17b-1: the Profile tab form. Error TEXT for a failed load comes from errorMessage(err); the messages below are the
+     // validation codes of state/ui-profile-form.ts (UiProfileErrorKey), looked up at render time.
