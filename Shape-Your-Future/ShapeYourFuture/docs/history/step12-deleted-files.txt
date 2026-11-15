@@ -1,0 +1,2 @@
+frontend/src/lib/avatar.ts
+(parts removed inside kept files: avatar+bio UI in views/profile-account.ts, setAvatar in api/client.ts, AVATAR_PRESETS/MAX_AVATAR_BYTES/SetAvatarRequest in api/types.ts, avatar CSS, avatar+bio i18n keys en+fa)

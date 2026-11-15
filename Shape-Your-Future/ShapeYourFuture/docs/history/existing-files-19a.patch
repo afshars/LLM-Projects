@@ -1,0 +1,399 @@
+--- a/frontend/src/api/client.ts
++++ b/frontend/src/api/client.ts
+@@ -784,7 +784,11 @@
+     return request<ConversationTurnResponse>("/conversation/continue", { method: "POST", body, llm: true });
+   },
+ 
+-  /** GET /conversation/{id} - returns state only (`question_fa` is null). */
++  /** GET /conversation/{id} - returns state only (`question_fa` is null): stage,
++   * intent, known/missing information. The backend stores no messages, so it
++   * cannot return any. Pure DB read: no LLM call, no route-level rate limit.
++   * 404 if the id is unknown or belongs to another user. Used by
++   * state/conversation-restore.ts. */
+   getConversation(conversationId: string): Promise<ConversationTurnResponse> {
+     return request<ConversationTurnResponse>(
+       `/conversation/${encodeURIComponent(conversationId)}`,
+--- a/frontend/src/growth-os/i18n/en.ts
++++ b/frontend/src/growth-os/i18n/en.ts
+@@ -119,6 +119,11 @@
+     ctaGoalLabel: "Your goal",
+     ctaButton: "Convert to Goal Roadmap",
+     ctaCreating: "Creating your roadmap…",
++    // Part 19a: restoring a conversation after the view was remounted.
++    restoring: "Reconnecting to your conversation…",
++    restoredNote: "Reconnected to your conversation. Your progress is kept, but earlier messages can't be shown here.",
++    restoreRetry: "Try again",
++    restoreStartNew: "Start a new conversation",
+   },
+   workspace: {
+     title: "Goal workspace",
+--- a/frontend/src/growth-os/i18n/fa.ts
++++ b/frontend/src/growth-os/i18n/fa.ts
+@@ -115,6 +115,11 @@
+     ctaGoalLabel: "هدف تو",
+     ctaButton: "تبدیل به نقشه راه هدف",
+     ctaCreating: "در حال ساخت نقشه راه…",
++    // Part 19a: restoring a conversation after the view was remounted.
++    restoring: "در حال اتصال دوباره به گفتگوی تو…",
++    restoredNote: "دوباره به گفتگویت وصل شدیم. پیشرفتت حفظ شده، اما پیام‌های قبلی اینجا نمایش داده نمی‌شوند.",
++    restoreRetry: "تلاش دوباره",
++    restoreStartNew: "شروع گفتگوی تازه",
+   },
+   workspace: {
+     title: "میز کار هدف",
+--- a/frontend/src/lib/dictionary.ts
++++ b/frontend/src/lib/dictionary.ts
+@@ -51,6 +51,8 @@
+     notFound: "We couldn't find what you were looking for.",
+     // Part 16b: analyzing a failure that is gone or is not this user's (404), context "behavior-failure".
+     behaviorFailureNotFound: "Item not found. This failure may have been removed. The list has been refreshed.",
++    // Part 19a: restoring a conversation (GET /conversation/{id}) that is gone or is not this user's (404), context "conversation-restore".
++    conversationNotFound: "We couldn't find this conversation. It may no longer exist.",
+     validation: "Some of the information isn't valid. Please check it and try again.",
+     invalidCredentials: "Incorrect username or password.",
+     registerRejected: "We couldn't create an account with these details. Try a different username.",
+@@ -287,6 +289,8 @@
+     notFound: "چیزی که دنبالش بودی پیدا نشد.",
+     // Part 16b: analyzing a failure that is gone or is not this user's (404), context "behavior-failure".
+     behaviorFailureNotFound: "مورد پیدا نشد. شاید این شکست حذف شده باشد. فهرست تازه شد.",
++    // Part 19a: restoring a conversation (GET /conversation/{id}) that is gone or is not this user's (404), context "conversation-restore".
++    conversationNotFound: "این گفتگو پیدا نشد. شاید دیگر وجود نداشته باشد.",
+     validation: "بعضی اطلاعات معتبر نیست. بررسی کن و دوباره تلاش کن.",
+     invalidCredentials: "نام کاربری یا رمز عبور نادرست است.",
+     registerRejected: "با این مشخصات نمی‌شود حساب ساخت. نام کاربری دیگری امتحان کن.",
+--- a/frontend/src/lib/dom.ts
++++ b/frontend/src/lib/dom.ts
+@@ -34,8 +34,10 @@
+  * reference is not an integer, 404 = the task is not in the user's account; any other
+  * 422 / validation error says the plan's own fields are not valid.
+  * "behavior-failure" (Part 16b, POST /behavior/task-failures/{id}/analyze): a 404 says the item was not found (it may have been
+- * removed); a 400/422 is the generic "check your input" text. */
+-export type ErrorContext = "login" | "register" | "save" | "plan-confirm" | "behavior-failure";
++ * removed); a 400/422 is the generic "check your input" text.
++ * "conversation-restore" (Part 19a, GET /conversation/{id}): a 404 says the conversation was not found
++ * (unknown id, or it belongs to another user). */
++export type ErrorContext = "login" | "register" | "save" | "plan-confirm" | "behavior-failure" | "conversation-restore";
+ 
+ const PERSIAN_CHARS = /[\u0600-\u06FF]/;
+ /** api/client.ts falls back to this text when the server sent no `detail`. */
+@@ -76,6 +78,7 @@
+       return e.conflict;
+     case "not_found":
+       if (context === "behavior-failure") return e.behaviorFailureNotFound;
++      if (context === "conversation-restore") return e.conversationNotFound;
+       return context === "plan-confirm" ? e.planConfirmTaskNotFound : e.notFound;
+     case "auth":
+       return context === "login" ? e.invalidCredentials : e.sessionExpired;
+--- a/frontend/src/state/journey.ts
++++ b/frontend/src/state/journey.ts
+@@ -1,5 +1,5 @@
+ import { authStorage } from "../api/auth-storage";
+-import type { ChatMessage, ConversationTurnResponse, DecomposeResponse, FocusSessionOut, Goal } from "../api/types";
++import type { ApiErrorKind, ChatMessage, ConversationTurnResponse, DecomposeResponse, FocusSessionOut, Goal } from "../api/types";
+ 
+ /**
+  * Deliberately simple, explicit journey state (Phase 5). No library -
+@@ -32,6 +32,9 @@
+   title: string;
+ }
+ 
++/** Status of GET /conversation/{id} (state/conversation-restore.ts). */
++export type RestoreStatus = "idle" | "restoring" | "error";
++
+ /** State of the AI-mentor conversation (views/chat.ts). Lives here, not in
+  * the view, so it survives the full re-render app.ts does on every language
+  * or theme change, and so logout wipes it together with the rest. */
+@@ -42,13 +45,27 @@
+    * welcome message is NOT stored here (it is rendered from the dictionary
+    * so it flips language with the UI). */
+   messages: ChatMessage[];
+-  /** Metadata mirrored from the latest ConversationTurnResponse. */
++  /** Metadata mirrored from the latest ConversationTurnResponse (start,
++   * continue and GET /conversation/{id} all update it). */
+   currentTopic: string | null;
+   detectedIntent: string | null;
++  /** The backend's `conversation_stage` ("discovery" | "ready" | "closed"). */
+   stage: string | null;
+   /** Sticky once the backend reports `done: true` (nothing left to ask). */
+   isDone: boolean;
++  /** topic -> { field -> value } (backend: dict[str, dict[str, str]]). */
+   knownInformation: Record<string, Record<string, string>>;
++  /** Topic names still to ask about (backend: list[str]). */
++  missingInformation: string[];
++  /** GET /conversation/{id} request state. The error is stored as the
++   * ApiError `kind` only and translated at render time (errorMessage), so it
++   * follows a language switch. */
++  restoreStatus: RestoreStatus;
++  restoreErrorKind: ApiErrorKind | null;
++  /** True once a restore succeeded. The backend returns state only, not the
++   * messages, so the feed stays empty; the view shows a note instead (also
++   * stops the restore from re-running on every later mount). */
++  restored: boolean;
+   /** A start/continue request is in flight. */
+   awaiting: boolean;
+   /** Unsent composer text (kept across re-renders). */
+@@ -79,6 +96,10 @@
+     stage: null,
+     isDone: false,
+     knownInformation: {},
++    missingInformation: [],
++    restoreStatus: "idle",
++    restoreErrorKind: null,
++    restored: false,
+     awaiting: false,
+     draft: "",
+     notice: null,
+@@ -147,7 +168,12 @@
+   // ---------------- Conversation actions ----------------
+ 
+   setConversationId(conversationId: string | null) {
+-    this.patchConversation({ conversationId });
++    // Dropping the id (unknown conversation) also drops any restore state tied to it.
++    this.patchConversation(
++      conversationId === null
++        ? { conversationId, restoreStatus: "idle", restoreErrorKind: null, restored: false }
++        : { conversationId }
++    );
+   }
+ 
+   appendMessage(message: ChatMessage) {
+@@ -168,14 +194,45 @@
+    * (start/continue). `isDone` never flips back to false within one
+    * conversation: once there is nothing left to ask, the CTA stays. */
+   recordTurn(turn: ConversationTurnResponse) {
+-    this.patchConversation({
++    // A successful turn proves the conversation exists: a stale restore error no longer applies.
++    const clearRestoreError =
++      this.state.conversation.restoreStatus === "error" ? ({ restoreStatus: "idle", restoreErrorKind: null } as const) : {};
++    this.patchConversation({ ...this.turnPatch(turn), ...clearRestoreError });
++  }
++
++  private turnPatch(turn: ConversationTurnResponse): Partial<ConversationState> {
++    return {
+       conversationId: turn.conversation_id,
+       currentTopic: turn.current_topic,
+       detectedIntent: turn.detected_intent,
+       stage: turn.conversation_stage,
+       knownInformation: turn.known_information,
++      missingInformation: turn.missing_information,
+       isDone: this.state.conversation.isDone || turn.done,
+-    });
++    };
++  }
++
++  // ---------------- Restore (state/conversation-restore.ts) ----------------
++
++  beginRestore() {
++    this.patchConversation({ restoreStatus: "restoring", restoreErrorKind: null });
++  }
++
++  /** GET /conversation/{id} succeeded: same fields as a turn, in one emit.
++   * Messages and the draft are left exactly as they are. */
++  completeRestore(turn: ConversationTurnResponse) {
++    this.patchConversation({ ...this.turnPatch(turn), restoreStatus: "idle", restoreErrorKind: null, restored: true });
++  }
++
++  failRestore(kind: ApiErrorKind) {
++    this.patchConversation({ restoreStatus: "error", restoreErrorKind: kind });
++  }
++
++  /** "Start a new conversation": drops the old id and everything derived from
++   * it. The unsent draft is kept. The next send creates a fresh conversation. */
++  startNewConversation() {
++    this.state = { ...this.state, conversation: { ...emptyConversation(), draft: this.state.conversation.draft } };
++    this.emitConversation();
+   }
+ 
+   setAwaiting(awaiting: boolean) {
+--- a/frontend/src/style.css
++++ b/frontend/src/style.css
+@@ -1386,6 +1386,34 @@
+   align-self: flex-start;
+ }
+ 
++/* Restore status (Part 19a): "reconnecting" line, or a failure with one action button. */
++.chat-restore {
++  align-self: stretch;
++  display: flex;
++  flex-direction: column;
++  gap: var(--space-2);
++  max-inline-size: min(100%, 620px);
++  padding-block: var(--space-3);
++  padding-inline: var(--space-4);
++  border: 1px dashed var(--color-border);
++  border-radius: var(--radius-lg);
++  color: var(--color-text-muted);
++}
++.chat-restore--error {
++  border-style: solid;
++  border-color: var(--color-danger-border);
++  background: var(--color-danger-bg);
++  color: var(--color-danger-text);
++}
++.chat-restore__text {
++  margin: 0;
++  overflow-wrap: anywhere;
++}
++.chat-restore .btn-primary,
++.chat-restore .btn-secondary {
++  align-self: flex-start;
++}
++
+ /* =========================================================================
+    Goal Workspace (views/goal-workspace.ts)
+    Logical properties only, so the tree mirrors between dir="rtl" and "ltr".
+--- a/frontend/src/views/chat.ts
++++ b/frontend/src/views/chat.ts
+@@ -2,6 +2,7 @@
+ import type { ChatMessage } from "../api/types";
+ import { handleAuthExpiry } from "../lib/auth-guard";
+ import { el, errorMessage, isApiError } from "../lib/dom";
++import { restoreConversation, shouldRestoreOnMount } from "../state/conversation-restore";
+ import { LANG_META } from "../lib/locales";
+ import { setButtonLoading } from "../lib/page";
+ import { conversationGoalText, journey } from "../state/journey";
+@@ -31,11 +32,17 @@
+ /** Unsubscribes the previously mounted view (app.ts re-renders from scratch). */
+ let disposeActive: (() => void) | null = null;
+ 
++/** True while a chat view is on screen. app.ts calls renderChatView again on every language/theme
++ * change and state emission; only the call after disposeChatView() is a real (re)mount, and only a
++ * real mount may restore the conversation. */
++let chatMounted = false;
++
+ /** Called by app.ts when the journey leaves CHAT, so no listener (and no
+  * detached DOM) outlives the view. */
+ export function disposeChatView(): void {
+   disposeActive?.();
+   disposeActive = null;
++  chatMounted = false;
+ }
+ /** Survives re-renders so a language switch mid-request can't double-submit. */
+ let converting = false;
+@@ -46,6 +53,8 @@
+ 
+ export function renderChatView(container: HTMLElement, context: ViewContext): void {
+   disposeActive?.();
++  const freshMount = !chatMounted; // false on a language/theme re-render: no restore, no refetch
++  chatMounted = true;
+ 
+   const c = context.dict.growth.chat;
+   const timeFormat = new Intl.DateTimeFormat(LANG_META[context.lang].locale, { hour: "2-digit", minute: "2-digit" });
+@@ -96,6 +105,8 @@
+   const rendered = new Map<string, HTMLElement>();
+   let greetingNode: HTMLElement | null = null;
+   let noticeNode: HTMLElement | null = null;
++  let restoredNode: HTMLElement | null = null;
++  let restoreNode: HTMLElement | null = null;
+   let ctaNode: HTMLElement | null = null;
+   let ctaGoal: string | null = null;
+   let ctaBtn: HTMLButtonElement | null = null;
+@@ -141,6 +152,38 @@
+     ]);
+   }
+ 
++  /** A backend request that must block sending is in flight. */
++  function busy(): boolean {
++    const conv = journey.get().conversation;
++    return conv.awaiting || conv.restoreStatus === "restoring";
++  }
++
++  /** Restore progress / failure. The error text is built here from the stored ApiError kind, so it
++   * is in the current UI language after a language switch. 404 -> start over; other errors -> retry. */
++  function buildRestoreNode(): HTMLElement | null {
++    const conv = journey.get().conversation;
++    if (conv.restoreStatus === "restoring") {
++      return el("div", { class: "chat-restore", role: "status" }, [el("p", { class: "chat-restore__text" }, [c.restoring])]);
++    }
++    if (conv.restoreStatus !== "error") return null;
++    const kind = conv.restoreErrorKind ?? "unknown";
++    const text = errorMessage({ kind, status: null, message: "" }, "conversation-restore");
++    const notFound = kind === "not_found";
++    const btn = el("button", { class: notFound ? "btn-primary" : "btn-secondary", type: "button" }, [
++      notFound ? c.restoreStartNew : c.restoreRetry,
++    ]) as HTMLButtonElement;
++    btn.addEventListener("click", () => {
++      if (notFound) {
++        journey.startNewConversation();
++        input.focus();
++      } else {
++        const id = journey.get().conversation.conversationId;
++        if (id) void restoreConversation(id);
++      }
++    });
++    return el("div", { class: "chat-restore chat-restore--error", role: "alert" }, [el("p", { class: "chat-restore__text" }, [text]), btn]);
++  }
++
+   function sync(focusInput = false) {
+     if (!view.isConnected) return; // this view was replaced by a newer render
+     const conv = journey.get().conversation;
+@@ -177,6 +220,20 @@
+       }
+     }
+ 
++    // "Reconnected" note: the backend returns no messages, so say so (translated at render time).
++    if (conv.restored && !restoredNode) {
++      restoredNode = messageNode("system", c.restoredNote, undefined, animate);
++      greetingNode.after(restoredNode);
++    } else if (!conv.restored && restoredNode) {
++      restoredNode.remove();
++      restoredNode = null;
++    }
++
++    // Restore progress / failure (state/conversation-restore.ts)
++    restoreNode?.remove();
++    restoreNode = buildRestoreNode();
++    if (restoreNode) feed.insertBefore(restoreNode, anchor);
++
+     // Quiet system notice (request errors)
+     noticeNode?.remove();
+     noticeNode = null;
+@@ -208,11 +265,13 @@
+     }
+ 
+     // Controls
+-    sendBtn.disabled = conv.awaiting || input.value.trim().length === 0;
+-    sendBtn.setAttribute("aria-busy", String(conv.awaiting));
+-    input.setAttribute("aria-busy", String(conv.awaiting));
+-    for (const chip of chips) chip.disabled = conv.awaiting;
+-    chipsBox.hidden = conv.messages.length > 0; // starters only help on an empty conversation
++    const blocked = busy();
++    sendBtn.disabled = blocked || input.value.trim().length === 0;
++    sendBtn.setAttribute("aria-busy", String(blocked));
++    input.setAttribute("aria-busy", String(blocked));
++    for (const chip of chips) chip.disabled = blocked;
++    // starters only help on a new, empty conversation (not one that was restored without its messages)
++    chipsBox.hidden = conv.messages.length > 0 || conv.restored;
+ 
+     scrollToEnd(!firstPaint);
+     if (focusInput) input.focus();
+@@ -221,7 +280,7 @@
+   // ---------- Actions ----------
+   async function send(raw: string): Promise<void> {
+     const text = raw.trim().slice(0, MAX_MESSAGE_LENGTH);
+-    if (!text || journey.get().conversation.awaiting) return;
++    if (!text || busy()) return;
+ 
+     const message: ChatMessage = { id: nextId(), role: "user", content: text, timestamp: new Date().toISOString(), status: "pending" };
+     input.value = "";
+@@ -286,7 +345,7 @@
+   input.addEventListener("input", () => {
+     journey.setDraft(input.value); // silent: no re-render while typing
+     autosize();
+-    sendBtn.disabled = journey.get().conversation.awaiting || input.value.trim().length === 0;
++    sendBtn.disabled = busy() || input.value.trim().length === 0;
+   });
+ 
+   input.addEventListener("keydown", (e) => {
+@@ -303,6 +362,11 @@
+   // ---------- Mount ----------
+   const unsubscribe = journey.subscribeConversation(() => sync());
+   disposeActive = unsubscribe;
++  // Only a real (re)mount may restore: id in the store, no messages yet. Never on a language change.
++  const mountedConv = journey.get().conversation;
++  if (freshMount && mountedConv.conversationId && shouldRestoreOnMount(mountedConv)) {
++    void restoreConversation(mountedConv.conversationId);
++  }
+   sync();
+   firstPaint = false;
+   window.setTimeout(() => {

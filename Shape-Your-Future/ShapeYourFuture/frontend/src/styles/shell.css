@@ -1,0 +1,252 @@
+/* =========================================================================
+   Navigation shell (Part 4): sidebar on desktop, bottom bar on mobile, plus
+   the sub-navigation used inside Plan / Reflect / Profile & Settings.
+   Tokens only, logical properties only: mirrors under dir="rtl" as is.
+   Loaded after style.css and components.css (see main.ts).
+   ========================================================================= */
+
+:root { --bottom-nav-height: 64px; }
+
+.app-shell { --nav-col: 208px; min-width: 0; }
+@media (min-width: 1100px) { .app-shell { --nav-col: var(--sidebar-width); } }
+
+/* Without the nav (Auth) the shell is transparent: <main> lays out as before. */
+.app-shell[data-nav="on"] {
+  display: grid;
+  grid-template-columns: var(--nav-col) minmax(0, 1fr);
+  align-items: start;
+}
+
+/* ---------------- Sidebar (desktop) ---------------- */
+
+.app-nav {
+  position: sticky;
+  inset-block-start: var(--header-height);
+  z-index: var(--z-sticky);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  height: calc(100dvh - var(--header-height));
+  padding: var(--space-4) var(--space-3);
+  overflow-y: auto;
+  background: var(--color-sidebar-bg);
+  border-inline-end: 1px solid var(--color-border);
+  backdrop-filter: blur(var(--blur-glass)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--blur-glass)) saturate(140%);
+}
+.app-nav[hidden] { display: none; }
+
+.app-nav__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.app-nav__item { min-width: 0; }
+
+.app-nav__link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: var(--size-touch);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+  text-align: start;
+  cursor: pointer;
+  transition: color var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast);
+}
+.app-nav__link:hover { color: var(--color-text); background: rgba(var(--color-accent-rgb), 0.08); }
+.app-nav__link[aria-current="page"],
+.app-nav__link.is-current {
+  color: var(--color-text);
+  border-color: var(--color-border-strong);
+  background: rgba(var(--color-accent-rgb), 0.12);
+}
+.app-nav__icon { display: inline-flex; flex: none; }
+.app-nav__label { min-width: 0; overflow-wrap: anywhere; }
+
+/* ---------------- Fold button (desktop) ----------------
+   First thing in the sidebar, on the side the sidebar is on (the nav's inline start: right in Persian, left in English).
+   The chevron points left; it is mirrored so that it always points to the page edge the sidebar folds to, and flips
+   when the sidebar is folded. Folded: a narrow icon-only rail that keeps this button. */
+
+.app-nav__toggle {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: var(--space-2);
+  min-height: var(--size-touch);
+  margin-block-end: var(--space-2);
+}
+.app-nav__toggle-icon { display: inline-flex; flex: none; }
+:root[dir="rtl"] .app-nav__toggle-icon,
+.app-nav[data-collapsed] .app-nav__toggle-icon { transform: scaleX(-1); }
+:root[dir="rtl"] .app-nav[data-collapsed] .app-nav__toggle-icon { transform: none; }
+
+@media (min-width: 769px) {
+  .app-shell[data-nav="on"]:has(> .app-nav[data-collapsed]) { --nav-col: 76px; }
+  .app-nav[data-collapsed] { align-items: stretch; padding-inline: var(--space-2); }
+  .app-nav[data-collapsed] .app-nav__toggle { align-self: center; padding-inline: var(--space-3); }
+  .app-nav[data-collapsed] .app-nav__link { justify-content: center; padding-inline: 0; }
+  .app-nav[data-collapsed] .app-nav__toggle-label,
+  .app-nav[data-collapsed] .app-nav__label {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+}
+
+/* The "More" button only exists on mobile. */
+.app-nav__item--more-toggle { display: none; }
+
+/* ---------------- Sub-navigation ---------------- */
+
+.subnav { max-width: 100%; margin-block-end: var(--space-4); }
+.subnav__list {
+  display: flex;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0 0 var(--space-1);
+  list-style: none;
+  overflow-x: auto; /* scrolls inside itself, never the page */
+  scrollbar-width: thin;
+}
+.subnav__item { flex: none; }
+.subnav__link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--size-touch);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--color-text-muted);
+  font: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--transition-fast), border-color var(--transition-fast), background var(--transition-fast);
+}
+.subnav__link:hover { color: var(--color-text); border-color: var(--color-border-strong); background: rgba(var(--color-accent-rgb), 0.08); }
+.subnav__link[aria-current="page"] {
+  color: var(--color-text);
+  border-color: var(--color-border-strong);
+  background: rgba(var(--color-accent-rgb), 0.12);
+  cursor: default;
+}
+.subnav__link--disabled,
+.subnav__link--disabled:hover {
+  border-style: dashed;
+  background: none;
+  color: var(--color-text-faint);
+  cursor: not-allowed;
+}
+.subnav__badge {
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-pill);
+  background: rgba(var(--color-violet-rgb), 0.16);
+  color: var(--color-text-muted);
+  font-size: var(--text-xs);
+}
+
+/* ---------------- Bottom bar (mobile) ---------------- */
+
+@media (max-width: 768px) {
+  .app-shell[data-nav="on"] { display: block; }
+
+  .app-nav {
+    position: fixed;
+    inset-inline: 0;
+    inset-block: auto 0;
+    z-index: var(--z-header);
+    flex-direction: row;
+    height: auto;
+    padding: 0 var(--space-1) env(safe-area-inset-bottom, 0px);
+    overflow: visible;
+    background: var(--color-surface-solid);
+    border-inline-end: 0;
+    border-block-start: 1px solid var(--color-border);
+  }
+
+  .app-nav__toggle { display: none; } /* a phone has no sidebar to fold */
+  .app-nav__list { flex: 1; flex-direction: row; gap: 0; min-width: 0; }
+  .app-nav__list .app-nav__item { flex: 1 1 0; }
+  .app-nav__item--more-toggle { display: block; }
+
+  .app-nav__list .app-nav__link {
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    min-height: var(--bottom-nav-height);
+    padding: var(--space-2) 2px;
+    font-size: 11px;
+    text-align: center;
+  }
+  .app-nav__list .app-nav__label {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* "More" panel: floats above the bar, closed by default. */
+  .app-nav__more-list {
+    display: none;
+    position: absolute;
+    inset-inline-end: var(--space-2);
+    inset-block-end: calc(100% + var(--space-2));
+    min-width: 200px;
+    padding: var(--space-2);
+    background: var(--color-surface-solid);
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-card);
+  }
+  .app-nav[data-more-open] .app-nav__more-list { display: flex; }
+
+  /* Keep content clear of the fixed bar. */
+  .app-shell[data-nav="on"] .app-main {
+    padding-block-end: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px) + var(--space-5));
+  }
+}
+
+/* ---------------- App error states (lib/ui/app-error.ts) ---------------- */
+
+.app-error {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  max-inline-size: 40rem;
+  margin-inline: auto;
+  padding-block: var(--space-6);
+  padding-inline: var(--space-4);
+}
+.app-error__msg { margin: 0; font-size: var(--text-md); line-height: 1.5; }
+.app-error__actions,
+.app-error-banner__actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+
+.app-error-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-block-end: 0;
+  margin-inline: var(--space-4);
+}
+.app-error-banner__msg { flex: 1 1 14rem; min-inline-size: 0; }

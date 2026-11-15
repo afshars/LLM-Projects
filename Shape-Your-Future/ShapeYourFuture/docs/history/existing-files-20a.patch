@@ -1,0 +1,105 @@
+--- a/frontend/src/growth-os/i18n/en.ts
++++ b/frontend/src/growth-os/i18n/en.ts
+@@ -1,5 +1,6 @@
+ import type { AvatarPreset } from "../../api/types";
+ import type { RouteKey } from "../types";
++import type { JourneyStepId } from "../../state/journey-map";
+ 
+ /** English copy owned by the Growth OS feature. Merged into the app
+  * dictionary as `dict.growth` (see lib/dictionary.ts). */
+@@ -26,6 +27,41 @@
+       cta: "Go to chat",
+     },
+   },
++  // Part 20a: the user journey (state/journey-map.ts). `steps` names a step; `cta` is the text of a button that leads TO that
++  // step (lib/journey-next-step.ts). Both are keyed by JourneyStepId, so a step without copy is a compile error.
++  journey: {
++    nextGroup: "Next step",
++    steps: {
++      signUp: "Sign up",
++      activeHours: "Active hours",
++      brainDump: "Brain Dump",
++      createGoal: "Create a goal",
++      decompose: "Break the goal down",
++      planning: "Plan the next actions",
++      dailyPlan: "Today's plan",
++      whatNow: "What should I do now?",
++      focus: "Focus session",
++      feedback: "Session feedback",
++      progressCheck: "Progress check",
++      weeklyGrowth: "Weekly growth",
++      behaviorPatterns: "Behavior patterns",
++    } as Record<JourneyStepId, string>,
++    cta: {
++      signUp: "Create my account",
++      activeHours: "Set my active hours",
++      brainDump: "Start a Brain Dump",
++      createGoal: "Create a goal",
++      decompose: "Break my goal into steps",
++      planning: "Plan my next actions",
++      dailyPlan: "Open today's plan",
++      whatNow: "Ask what to do now",
++      focus: "Back to my focus session",
++      feedback: "Give feedback on the session",
++      progressCheck: "Check my progress",
++      weeklyGrowth: "See my weekly growth",
++      behaviorPatterns: "See my behavior patterns",
++    } as Record<JourneyStepId, string>,
++  },
+   profile: {
+     loading: "Loading your profile…",
+     identity: {
+--- a/frontend/src/growth-os/i18n/fa.ts
++++ b/frontend/src/growth-os/i18n/fa.ts
+@@ -26,6 +26,41 @@
+       cta: "رفتن به گفتگو",
+     },
+   },
++  // Part 20a: the user journey (state/journey-map.ts). `steps` names a step; `cta` is the text of a button that leads TO that
++  // step (lib/journey-next-step.ts). Both are keyed by JourneyStepId, so a step without copy is a compile error.
++  journey: {
++    nextGroup: "گام بعدی",
++    steps: {
++      signUp: "ثبت‌نام",
++      activeHours: "ساعت‌های فعال",
++      brainDump: "تخلیه ذهن",
++      createGoal: "ساختن هدف",
++      decompose: "تجزیه‌ی هدف",
++      planning: "برنامه‌ریزی گام‌های بعدی",
++      dailyPlan: "برنامه‌ی امروز",
++      whatNow: "الان چه کاری بکنم؟",
++      focus: "جلسه‌ی تمرکز",
++      feedback: "بازخورد جلسه",
++      progressCheck: "بررسی پیشرفت",
++      weeklyGrowth: "رشد هفتگی",
++      behaviorPatterns: "الگوهای رفتاری",
++    },
++    cta: {
++      signUp: "ساختن حساب",
++      activeHours: "ساعت‌های فعالم را تنظیم کن",
++      brainDump: "شروع تخلیه ذهن",
++      createGoal: "ساختن یک هدف",
++      decompose: "هدفم را به گام‌ها تقسیم کن",
++      planning: "گام‌های بعدی را برنامه‌ریزی کن",
++      dailyPlan: "باز کردن برنامه‌ی امروز",
++      whatNow: "بپرس الان چه کار کنم",
++      focus: "برگشت به جلسه‌ی تمرکزم",
++      feedback: "ثبت بازخورد جلسه",
++      progressCheck: "بررسی پیشرفتم",
++      weeklyGrowth: "دیدن رشد هفتگی‌ام",
++      behaviorPatterns: "دیدن الگوهای رفتاری‌ام",
++    },
++  },
+   profile: {
+     loading: "در حال بارگذاری پروفایل…",
+     identity: {
+--- a/frontend/src/styles/components.css
++++ b/frontend/src/styles/components.css
+@@ -279,3 +279,7 @@
+ .ui-list__move, .ui-list__remove, .ui-list__add { min-height: var(--size-touch); flex: none; }
+ .ui-list__move[disabled] { opacity: 0.5; cursor: not-allowed; }
+ .ui-list__add { justify-self: start; }
++
++/* ---- Part 20a: journeyNextStep (lib/journey-next-step.ts). Tokens only, logical properties only. ---- */
++.journey-next { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); margin-block-start: var(--space-4); min-width: 0; max-inline-size: 100%; }
++.journey-next__cta { min-block-size: var(--size-touch); max-inline-size: 100%; overflow-wrap: anywhere; }

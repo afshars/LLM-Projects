@@ -1,0 +1,24 @@
+/* =========================================================================
+   Coach: the "one tactic for today" card, the whole Coach screen. Tokens only, logical properties only.
+   ========================================================================= */
+
+.coach-tactic {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-block-end: var(--space-3);
+}
+.coach-tactic__title { margin: 0; font-size: var(--text-lg); font-weight: var(--weight-medium); color: var(--color-text); }
+.coach-tactic__body { display: flex; flex-direction: column; gap: var(--space-3); min-inline-size: 0; }
+.coach-tactic__form { display: flex; flex-direction: column; gap: var(--space-2); }
+.coach-tactic__form .btn-primary { align-self: flex-start; }
+.coach-tactic__label { color: var(--color-text-muted); font-size: var(--text-sm); }
+.coach-tactic__input { inline-size: 100%; min-block-size: var(--size-touch); resize: vertical; }
+.coach-tactic__status { margin: 0; font-size: var(--text-sm); color: var(--color-text-muted); }
+.coach-tactic__tactic { display: flex; flex-direction: column; gap: var(--space-1); padding-inline-start: var(--space-3); border-inline-start: 3px solid var(--color-accent); }
+.coach-tactic__kind { margin: 0; font-size: var(--text-xs); color: var(--color-text-muted); }
+.coach-tactic__name { margin: 0; font-size: var(--text-md); font-weight: var(--weight-medium); color: var(--color-text); overflow-wrap: anywhere; }
+.coach-tactic__desc { margin: 0; color: var(--color-text); overflow-wrap: anywhere; }
+.coach-tactic__actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+
+.coach-view { display: flex; flex-direction: column; gap: var(--space-3); max-inline-size: 40rem; margin-inline: auto; padding-block: var(--space-4); padding-inline: var(--space-4); }

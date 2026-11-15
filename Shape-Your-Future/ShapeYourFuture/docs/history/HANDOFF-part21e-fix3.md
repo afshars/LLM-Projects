@@ -1,0 +1,4 @@
+# Part 21e fix 3: hard-coded "YYYY-MM-DD" placeholder -> i18n
+Changed: `frontend/src/views/next-action-form.ts` (placeholder now `g.scheduledPlaceholder`), `frontend/src/growth-os/i18n/{en,fa}.ts` (new `growth.goals.stepper.nextActionForm.scheduledPlaceholder`: en "YYYY-MM-DD", fa "سال-ماه-روز (مثل 2026-10-07)"), `frontend/smoke/next-action-form-view.test.ts` (2 tests: placeholder follows the language; the view has no literal placeholder / no "YYYY-MM-DD").
+Why fa differs: the parity check flags identical letter-bearing values, and "YYYY" means little to a Persian reader. The accepted input format is unchanged (the field still normalizes Persian digits).
+Checks: `tsc --noEmit` clean; `check:i18n` OK (1846/1846); `vitest run smoke/next-action*`: 5 files / 208 tests pass. Re-grep `YYYY-MM-DD` in src/views: no hits.

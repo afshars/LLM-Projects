@@ -1,0 +1,70 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    ports:
+      # Host port is configurable: on Windows, 8000 can fall inside a range
+      # reserved by Hyper-V/WinNAT ("forbidden by its access permissions").
+      # Put BACKEND_PORT=8080 in a `.env` file next to this compose file.
+      - "${BACKEND_PORT:-18010}:8000"
+    volumes:
+      # Named volume for the SQLite file, so the DB survives
+      # `docker compose down` / container recreation (matches the
+      # comment in backend/Dockerfile).
+      - backend_data:/data
+    environment:
+      # development (default) or production. Production refuses to start without a strong SECRET_KEY.
+      APP_ENV: ${APP_ENV:-development}
+      DATABASE_URL: sqlite:////data/app.db
+      # Comes ONLY from `.env` / the environment. Empty in development = the labelled dev default (a warning is logged).
+      SECRET_KEY: ${SECRET_KEY:-}
+      ALLOWED_ORIGINS: http://localhost:5173,http://localhost:3000,http://localhost:${FRONTEND_PORT:-13010}
+      # LLM provider: openai / anthropic / groq / ollama / openai_compatible (see .env.example in this folder
+      # and backend/app/llm/provider.py for what each one needs).
+      # Put real values in a `.env` file next to this compose file
+      # (docker compose loads it automatically) rather than editing
+      # this file, so secrets never get committed.
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai_compatible}
+      LLM_MODEL_CHEAP: ${LLM_MODEL_CHEAP:-gapgpt-gemma-26b-a4b}
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0.2}
+      # Only for LLM_PROVIDER=openai / anthropic / groq: uncomment the matching line and add the key to `.env`.
+      #OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      #ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      #GROQ_API_KEY: ${GROQ_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.gapgpt.app/v1}
+      # No default on purpose: the key comes ONLY from `.env` (see .env.example).
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-20}
+    restart: unless-stopped
+    # HEALTHCHECK is already defined in backend/Dockerfile (python
+    # urllib against /healthz) - no need to repeat it here.
+
+  frontend:
+    build:
+      context: ./frontend
+      # Production-ish target: `npm run build` then nginx serves
+      # dist/. Switch to `target: dev` below for hot-reload while
+      # actively developing (see the two commented lines).
+      target: runtime
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:${BACKEND_PORT:-18010}}
+    ports:
+      # Configurable for the same reason as BACKEND_PORT above (Windows can
+      # reserve 3000 too). The same value is added to ALLOWED_ORIGINS (CORS).
+      - "${FRONTEND_PORT:-13010}:80"
+    # --- Dev mode instead (Vite + HMR) ---
+    # target: dev
+    # ports:
+    #   - "5173:5173"
+    # volumes:
+    #   - ./frontend:/app
+    #   - /app/node_modules   # keep the image's node_modules, don't let the bind mount hide it
+    # environment:
+    #   VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  backend_data:

@@ -1,0 +1,554 @@
+/* =========================================================================
+   AI Chat: the right-hand part of the Coach screen (views/coach-chat.ts), and the two-part layout around it.
+   Markup contract:
+
+   <div class="coach-split">
+     <section class="coach-split__side">   Highlight card + tactic card (left)
+     <section class="coach-split__chat">    the chat (right)
+       <div class="chat-view">
+         <div class="chat-toolbar"> History / New chat       (styles/chat-history.css)
+         <section class="chat-history">                      (styles/chat-history.css)
+         <div class="chat-body">
+           <div class="chat-feed" role="log"> .chat-message* / .chat-typing / .chat-feed__anchor
+           <div class="chat-dock"> .chat-suggestions + .chat-composer
+
+   Tokens only (styles/tokens.css) and logical properties only, so the parts mirror between dir="rtl" and "ltr".
+   The ONE deliberate exception is .coach-split itself: the user asked for Highlight + tactic on the LEFT and the chat on
+   the RIGHT of the page, so the two columns keep those physical sides in Persian too (each part still reads in the
+   document's direction).
+   ========================================================================= */
+
+/* ---------------- Coach screen: two parts ---------------- */
+
+/* Desktop: the screen fills exactly the space under the header; the left part scrolls on its own and only the chat's
+   feed scrolls on the right, so the composer stays pinned at the bottom (no page scroll). */
+/* The nav shell styles <main> with a more specific selector (styles/refresh.css), so this one repeats its prefix. */
+.app-main:has(> .coach-split),
+.app-shell[data-nav="on"] .app-main:has(> .coach-split) {
+  display: flex;
+  flex-direction: column;
+  block-size: calc(100dvh - var(--header-height));
+  min-block-size: 0;
+  max-inline-size: var(--layout-wide-width);
+  padding-block: var(--space-4) 0;
+  overflow: hidden;
+}
+
+.coach-split {
+  flex: 1;
+  min-block-size: 0;
+  display: grid;
+  direction: ltr; /* physical order: tactic side on the left, chat on the right, in both languages */
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  column-gap: var(--space-5);
+}
+/* Each part reads in the language's own direction again. */
+:root[dir="rtl"] .coach-split > * { direction: rtl; }
+:root[dir="ltr"] .coach-split > * { direction: ltr; }
+
+.coach-split__side {
+  grid-column: 1;
+  min-inline-size: 0;
+  min-block-size: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-block-end: var(--space-4);
+  scrollbar-width: thin;
+}
+.coach-split__chat {
+  grid-column: 2;
+  min-inline-size: 0;
+  min-block-size: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Narrow screens: one column, Highlight and tactic first, then the chat at a fixed comfortable height. The page
+   scrolls as a whole. */
+@media (max-width: 900px) {
+  .app-main:has(> .coach-split),
+  .app-shell[data-nav="on"] .app-main:has(> .coach-split) {
+    block-size: auto;
+    overflow: visible;
+    padding-block: var(--space-4) var(--space-6);
+  }
+  .coach-split {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+  .coach-split__side { overflow: visible; padding-block-end: 0; }
+  .coach-split__chat { block-size: min(70dvh, 38rem); min-block-size: 22rem; }
+}
+
+/* Phones: the fixed bottom bar must not cover the chat (same clearance as the shell gives other screens). */
+@media (max-width: 768px) {
+  .app-shell[data-nav="on"] .app-main:has(> .coach-split) {
+    padding-block-end: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px) + var(--space-6));
+  }
+}
+
+/* ---------------- Fold the left part away to focus on the chat ---------------- */
+
+.chat-toolbar__spacer { flex: 1 1 auto; }
+
+/* The fold button is the first thing in the left part, at its physical top-left corner (the bar is LTR on purpose: the
+   part itself sits on the left in both languages). The chevron points left (where the part folds to) and flips when
+   the part is folded. */
+.coach-side-bar { direction: ltr; display: flex; justify-content: flex-start; }
+.coach-fold { display: inline-flex; align-items: center; gap: var(--space-2); min-block-size: var(--size-touch); }
+.coach-fold__icon { display: inline-flex; flex: none; }
+.coach-split[data-side="collapsed"] .coach-fold__icon { transform: scaleX(-1); }
+
+/* Folded: everything but the button goes. */
+.coach-split[data-side="collapsed"] > .coach-split__side > :not(.coach-side-bar) { display: none; }
+
+/* Desktop: the folded part is a narrow rail that keeps only the button (icon, label read by screen readers); the chat
+   takes the rest of the width. */
+@media (min-width: 901px) {
+  .coach-split[data-side="collapsed"] { grid-template-columns: var(--coach-rail-width, 4rem) minmax(0, 1fr); }
+  .coach-split[data-side="collapsed"] > .coach-split__side { overflow: hidden; }
+  .coach-split[data-side="collapsed"] .coach-fold { padding-inline: var(--space-3); }
+  .coach-split[data-side="collapsed"] .coach-fold__label {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+}
+
+/* ---------------- Today's Highlight card (left, read-only) ---------------- */
+
+.coach-highlight { display: flex; flex-direction: column; gap: var(--space-2); }
+.coach-highlight__title { margin: 0; font-size: var(--text-lg); font-weight: var(--weight-medium); color: var(--color-text); }
+.coach-highlight__body { display: flex; flex-direction: column; gap: var(--space-3); min-inline-size: 0; }
+.coach-highlight__body .btn-secondary { align-self: flex-start; }
+.coach-highlight__text {
+  margin: 0;
+  padding-inline-start: var(--space-3);
+  border-inline-start: 3px solid var(--color-accent);
+  font-size: var(--text-md);
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+.coach-highlight__status { margin: 0; font-size: var(--text-sm); color: var(--color-text-muted); }
+.coach-highlight__meta { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.coach-highlight__chip {
+  padding-block: 2px;
+  padding-inline: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill, 999px);
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+.coach-highlight__chip.is-done { border-color: rgba(var(--color-success-rgb), 0.55); background: rgba(var(--color-success-rgb), 0.1); color: var(--color-text); }
+
+/* ---------------- Chat: layout inside the right part ---------------- */
+
+.chat-view {
+  flex: 1;
+  min-block-size: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.chat-body {
+  flex: 1;
+  min-block-size: 0;
+  min-inline-size: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.chat-composer__input:disabled { cursor: not-allowed; opacity: 0.7; }
+
+/* ---------------- Message feed ---------------- */
+
+.chat-feed {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-block: var(--space-4) var(--space-2);
+  padding-inline: var(--space-2);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(var(--color-accent-rgb), 0.3) transparent;
+  /* soft fade where messages scroll under the header */
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 var(--space-4));
+  mask-image: linear-gradient(to bottom, transparent 0, #000 var(--space-4));
+}
+
+/* Pure-CSS "stick to bottom": only the sentinel at the end may be a scroll
+   anchor, so while the user is at the bottom the browser keeps them there
+   as messages/typing dots are added (Chromium, Firefox). Safari falls back
+   to the JS scrollTo({ behavior: "smooth" }) call. */
+.chat-feed > * {
+  flex: none;
+  overflow-anchor: none;
+}
+.chat-feed > .chat-feed__anchor {
+  block-size: 1px;
+  overflow-anchor: auto;
+}
+
+/* ---------------- Message bubbles ---------------- */
+
+.chat-message {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  max-inline-size: min(86%, 620px);
+  animation: chat-msg-in 300ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* In a column flexbox the cross axis is the inline axis, so flex-start /
+   flex-end resolve to inline-start / inline-end in both RTL and LTR. */
+.chat-message--user {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+.chat-message--assistant {
+  align-self: flex-start;
+  align-items: flex-start;
+}
+
+.chat-message__bubble {
+  padding-block: var(--space-3);
+  padding-inline: var(--space-4);
+  border: 1px solid transparent;
+  border-radius: var(--radius-lg);
+  font-size: var(--text-md);
+  line-height: var(--line);
+  color: var(--color-text);
+  text-align: start;
+  white-space: pre-wrap; /* keep the user's line breaks */
+  overflow-wrap: anywhere;
+  backdrop-filter: blur(var(--blur-glass));
+  -webkit-backdrop-filter: blur(var(--blur-glass));
+  transition: opacity var(--transition-fast), border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+/* User: cyan glass, sharp corner on the trailing (inline-end) bottom edge */
+.chat-message--user .chat-message__bubble {
+  background: var(--color-chat-user-bg);
+  border-color: var(--color-chat-user-border);
+  border-end-end-radius: var(--radius-sm);
+  box-shadow: 0 0 18px rgba(var(--color-accent-rgb), 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* AI mentor: violet glass, sharp corner on the leading (inline-start) bottom edge */
+.chat-message--assistant .chat-message__bubble {
+  background: var(--color-chat-ai-bg);
+  border-color: var(--color-chat-ai-border);
+  border-end-start-radius: var(--radius-sm);
+  box-shadow: 0 0 18px rgba(var(--color-violet-rgb), 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.chat-message__meta {
+  padding-inline: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--color-text-faint);
+}
+
+/* Status: ChatMessage.status = "pending" | "sent" | "error" */
+.chat-message--pending .chat-message__bubble {
+  opacity: 0.7;
+}
+.chat-message--error .chat-message__bubble {
+  background: var(--color-danger-bg);
+  border-color: var(--color-danger-border);
+  color: var(--color-danger-text);
+  box-shadow: 0 0 14px rgba(var(--color-danger-rgb), 0.18);
+}
+
+/* role = "system": quiet, centered notice */
+.chat-message--system {
+  align-self: center;
+  align-items: center;
+  max-inline-size: 100%;
+}
+.chat-message--system .chat-message__bubble {
+  padding-block: var(--space-1);
+  background: transparent;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-pill);
+  box-shadow: none;
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+@keyframes chat-msg-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---------------- AI typing indicator (pulsing 3 dots) ---------------- */
+
+.chat-typing {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding-block: var(--space-3);
+  padding-inline: var(--space-4);
+  background: var(--color-chat-ai-bg);
+  border: 1px solid var(--color-chat-ai-border);
+  border-radius: var(--radius-lg);
+  border-end-start-radius: var(--radius-sm);
+  box-shadow: 0 0 18px rgba(var(--color-violet-rgb), 0.14);
+  backdrop-filter: blur(var(--blur-glass));
+  -webkit-backdrop-filter: blur(var(--blur-glass));
+  animation: chat-msg-in 300ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.chat-typing__dot {
+  inline-size: 7px;
+  block-size: 7px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  opacity: 0.35;
+  animation: chat-dot-pulse 1.2s ease-in-out infinite;
+}
+/* Stagger follows DOM order, so the wave travels in the reading direction. */
+.chat-typing__dot:nth-child(2) {
+  animation-delay: 0.16s;
+}
+.chat-typing__dot:nth-child(3) {
+  animation-delay: 0.32s;
+}
+
+@keyframes chat-dot-pulse {
+  0%,
+  80%,
+  100% {
+    transform: scale(0.7);
+    opacity: 0.35;
+    box-shadow: 0 0 0 rgba(var(--color-accent-rgb), 0);
+  }
+  40% {
+    transform: scale(1);
+    opacity: 1;
+    box-shadow: 0 0 10px rgba(var(--color-accent-rgb), 0.8);
+  }
+}
+
+/* ---------------- Bottom dock: suggestions + composer ---------------- */
+
+.chat-dock {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-block-end: max(var(--space-3), env(safe-area-inset-bottom));
+}
+
+/* ---------------- Suggested prompts (horizontal scroller) ---------------- */
+
+.chat-suggestions {
+  display: flex;
+  gap: var(--space-2);
+  padding-block: 2px; /* room for the chip glow */
+  padding-inline: var(--space-4);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  /* fade at both scroll edges; the token angle runs start → end in RTL and LTR */
+  -webkit-mask-image: linear-gradient(
+    var(--gradient-inline-angle),
+    transparent 0,
+    #000 var(--space-4),
+    #000 calc(100% - var(--space-4)),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    var(--gradient-inline-angle),
+    transparent 0,
+    #000 var(--space-4),
+    #000 calc(100% - var(--space-4)),
+    transparent 100%
+  );
+}
+.chat-suggestions::-webkit-scrollbar {
+  display: none;
+}
+.chat-suggestions[hidden] {
+  display: none; /* display:flex above would otherwise beat the UA [hidden] rule */
+}
+
+.chat-suggestions__chip {
+  flex: none;
+  scroll-snap-align: start;
+  min-block-size: 38px;
+  padding-block: var(--space-1);
+  padding-inline: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  background: var(--color-bg-elevated);
+  color: var(--color-text-muted);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--transition-fast), border-color var(--transition-fast),
+    background var(--transition-fast), box-shadow var(--transition-fast),
+    transform var(--transition-fast);
+}
+.chat-suggestions__chip:hover {
+  color: var(--color-text);
+  border-color: var(--color-accent);
+  background: rgba(var(--color-accent-rgb), 0.1);
+  box-shadow: 0 0 14px rgba(var(--color-accent-rgb), 0.18);
+}
+.chat-suggestions__chip:active {
+  transform: scale(0.97);
+}
+
+/* ---------------- Composer bar ---------------- */
+
+.chat-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  padding-block: var(--space-2);
+  padding-inline: var(--space-4) var(--space-2); /* start, end (end sits next to the button) */
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-card);
+  backdrop-filter: blur(var(--blur-glass));
+  -webkit-backdrop-filter: blur(var(--blur-glass));
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.chat-composer:focus-within {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px rgba(var(--color-accent-rgb), 0.18), 0 0 24px rgba(var(--color-accent-rgb), 0.14);
+}
+
+/* Auto-resizing textarea: `field-sizing: content` grows it natively
+   (Chromium); elsewhere the view sets style.blockSize from scrollHeight.
+   Either way it is capped at ~5 lines and then scrolls. */
+.chat-composer__input {
+  flex: 1;
+  min-inline-size: 0;
+  min-block-size: 44px;
+  max-block-size: 160px;
+  padding-block: 10px;
+  padding-inline: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text);
+  font-size: var(--text-md);
+  line-height: 1.6;
+  text-align: start;
+  resize: none;
+  overflow-y: auto;
+  field-sizing: content;
+  scrollbar-width: thin;
+}
+.chat-composer__input::placeholder {
+  color: var(--color-text-faint);
+}
+/* the focus glow is drawn by .chat-composer:focus-within instead */
+.chat-composer__input:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.chat-composer__send {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  inline-size: 44px;
+  block-size: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--gradient-brand);
+  color: var(--color-accent-contrast);
+  cursor: pointer;
+  box-shadow: 0 0 14px rgba(var(--color-accent-rgb), 0.35);
+  transition: box-shadow var(--transition-med), transform var(--transition-fast),
+    filter var(--transition-fast), opacity var(--transition-fast);
+}
+.chat-composer__send:hover:not(:disabled) {
+  box-shadow: var(--shadow-neon-cyan);
+  transform: translateY(-1px);
+}
+.chat-composer__send:active:not(:disabled) {
+  transform: scale(0.95);
+}
+.chat-composer__send:disabled {
+  opacity: 0.4;
+  cursor: default;
+  box-shadow: none;
+  filter: grayscale(0.4);
+}
+.chat-composer__send svg {
+  inline-size: 20px;
+  block-size: 20px;
+}
+/* A "send" arrow drawn pointing right must point left in RTL. */
+:root[dir="rtl"] .chat-composer__send svg {
+  transform: scaleX(-1);
+}
+
+
+/* ---------------- Restore status: "reconnecting" line, or a failure with one action button ---------------- */
+.chat-restore {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-inline-size: min(100%, 620px);
+  padding-block: var(--space-3);
+  padding-inline: var(--space-4);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius-lg);
+  color: var(--color-text-muted);
+}
+.chat-restore--error {
+  border-style: solid;
+  border-color: var(--color-danger-border);
+  background: var(--color-danger-bg);
+  color: var(--color-danger-text);
+}
+.chat-restore__text {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.chat-restore .btn-primary,
+.chat-restore .btn-secondary {
+  align-self: flex-start;
+}
+
+/* ---------------- Responsive / motion ---------------- */
+
+@media (max-width: 600px) {
+  .chat-message { max-inline-size: 92%; }
+  .chat-message__bubble { padding-inline: var(--space-3); }
+  /* 16px stops iOS Safari from zooming the page when the textarea is focused */
+  .chat-composer__input { font-size: 16px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-feed { scroll-behavior: auto; }
+  .chat-typing__dot { animation: none; opacity: 0.7; }
+}
